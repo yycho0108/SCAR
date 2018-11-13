@@ -13,9 +13,9 @@ class PointDumper(object):
         pass
 
     @staticmethod
-    def proc_frame(x,y,h,r, viz=True):
+    def proc_frame(x,y,h,r, viz=False):
         # known angular spacings
-        a = np.linspace(0, 2*np.pi, 361, endpoint=True)
+        a = np.linspace(0, 2*np.pi, 360, endpoint=True)
         c, s = np.cos(a), np.sin(a)
         dx, dy = r*c, r*s # in robot frame
 
@@ -27,7 +27,6 @@ class PointDumper(object):
         px, py = (x+dx)[idx], (y+dy)[idx]
         if viz:
             PointDumper.visualize(px, py)
-            time.sleep(0.2)
         return px, py
 
     @staticmethod
@@ -35,7 +34,9 @@ class PointDumper(object):
         #plt.ion() # will work maybe?
         plt.plot(x,y, '.')
         plt.draw()
-        plt.show(block=False)
+        plt.pause(0.001)
+        #plt.draw()
+        #plt.show()
         return fig, ax
 
     def __call__(self, data):

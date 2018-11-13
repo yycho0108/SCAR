@@ -5,6 +5,7 @@ Collect data as the robot drives around the object
 """
 
 import cv2
+import os
 from cv_bridge import CvBridge
 
 from drive_ngon import ShapeDriver
@@ -41,7 +42,7 @@ class dataCollector:
 
         self.bridge = CvBridge()
 
-        self.data_path = "/home/bziemann/data/"
+        self.data_path = "/tmp/"
         
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
@@ -98,21 +99,24 @@ class dataCollector:
     def setImage(self, img):
 
         img = self.bridge.imgmsg_to_cv2(img, desired_encoding="bgr8")
-       # img = PImage.open(img)
+        #img = PImage.open(img)
         img = cv2.resize(img, (160, 120), interpolation=cv2.INTER_AREA)
         self.img = img
 
         
     def run(self):
+        pd = PointDumper()
+    	#driver = ShapeDriver(10,.25)
+    	#driver.run()
 
-    	driver = ShapeDriver(10,.25)
-    	driver.run()
-
-    	f = open(self.data_path+"data.csv" , "w+")
+        filename = os.path.join(self.data_path, 'data.csv')
+    	f = open(filename, "w+")
     	f.write("x,y,theta,scan\n")
     	count = 0
     	while not rospy.is_shutdown():
     		if (not len(self.ranges)==0) and (not self.img.size==0):
+                        # online visualization
+                        pd.proc_frame(self.x, self.y, self.theta, self.ranges, viz=True)
 	    		line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
 	    		f.write(line)
 
