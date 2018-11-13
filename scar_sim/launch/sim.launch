@@ -1,12 +1,12 @@
 <launch>
-    <!--<arg name="world" default="$(find warmup_project)/worlds/garage.world"/>-->
+    <!--<arg name="world" default="$(find scar_sim)/worlds/object.world"/>-->
     <arg name="pose" default="-x 0 -y 0 -z 0 -R 0 -P 0 -Y 0"/>
 
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="use_sim_time" value="true"/>
     </include>
 
-    <include file="$(find robot_learning)/launch/urdf.launch"/>
+    <include file="$(find scar_sim)/launch/urdf.launch"/>
     <node name="spawn_neato_model" pkg="gazebo_ros" type="spawn_model"
         args="-urdf -param robot_description -model neato -unpause $(arg pose)"/>
 
