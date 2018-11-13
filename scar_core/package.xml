@@ -28,8 +28,8 @@
   <!-- Example: -->
   <!-- <author email="jane.doe@example.com">Jane Doe</author> -->
 
-  <author email="ycho@olin.edu">Jamie Cho</maintainer>
-  <author email="benjamin.ziemann@students.olin.edu">Ben Ziemann</maintainer>
+  <author email="ycho@olin.edu">Jamie Cho</author>
+  <author email="benjamin.ziemann@students.olin.edu">Ben Ziemann</author>
 
 
   <!-- The *depend tags are used to specify dependencies -->

@@ -1,0 +1,10 @@
+<launch>
+    <arg name="image" default="false"/>
+    <arg name="base_topic" default="/tf /tf_static /cmd_vel /odom /scan /stable_scan"/>
+    <arg name="img_topic" default="/camera/camera_info /camera/image_raw/compressed"/>
+
+    <node pkg="rosbag" type="record"  name="rosbag" if="$(arg image)"
+        args="$(arg base_topic) $(arg viz_topic) $(arg img_topic) -o /tmp/warmup"/>
+    <node pkg="rosbag" type="record"  name="rosbag" unless="$(arg image)"
+        args="$(arg base_topic) $(arg viz_topic) -o /tmp/warmup" output="screen"/>
+</launch>
