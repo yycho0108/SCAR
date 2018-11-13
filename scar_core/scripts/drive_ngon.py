@@ -40,7 +40,6 @@ class ShapeDriver:
 
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
-        # rospy.init_node('tracePolygon')
         self.rate = rospy.Rate(2)
 
         rospy.Subscriber("/odom", Odometry, self.setLocation)
