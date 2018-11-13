@@ -5,6 +5,8 @@ Collect data as the robot drives around the object
 import cv2
 from cv_bridge import CvBridge
 
+from drive_ngon import ShapeDriver
+
 from PIL import Image as PImage
 import matplotlib.pyplot as plt
 import numpy as np
@@ -36,13 +38,12 @@ class dataCollector:
 
         self.bridge = CvBridge()
 
+        self.data_path = "/home/bziemann/data/"
+        
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
         self.vizPub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
-        
         rospy.init_node('data_collection')
-        self.rate = rospy.Rate(2)
-
         rospy.Subscriber("/scan", LaserScan, self.checkLaser)
         rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
@@ -101,7 +102,10 @@ class dataCollector:
         
     def run(self):
 
-    	f = open("data.csv" , "w+")
+    	driver = ShapeDriver(10,.25)
+    	driver.run()
+
+    	f = open(self.data_path+"data.csv" , "w+")
     	f.write("x,y,theta,scan\n")
     	count = 0
     	while not rospy.is_shutdown():
@@ -109,11 +113,10 @@ class dataCollector:
 	    		line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
 	    		f.write(line)
 
-	    		fileNum = "img" +str(count) +".png"
+	    		fileNum = self.data_path+"img" +str(count) +".png"
 	    		cv2.imwrite(fileNum,self.img)
 	    		count += 1
 
-	    		# rospy.sleep(.05)
 	    		self.ranges=[]
 
 
