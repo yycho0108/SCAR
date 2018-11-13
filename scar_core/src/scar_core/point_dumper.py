@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from matplotlib import pyplot as plt
 
 def R(x):
@@ -12,7 +13,7 @@ class PointDumper(object):
         pass
 
     @staticmethod
-    def proc_frame(x,y,h,r):
+    def proc_frame(x,y,h,r, viz=True):
         # known angular spacings
         a = np.linspace(0, 2*np.pi, 361, endpoint=True)
         c, s = np.cos(a), np.sin(a)
@@ -23,7 +24,19 @@ class PointDumper(object):
         # filter by nan/inf
         idx = np.isfinite(r)
 
-        return (x+dx)[idx], (y+dy)[idx]
+        px, py = (x+dx)[idx], (y+dy)[idx]
+        if viz:
+            PointDumper.visualize(px, py)
+            time.sleep(0.2)
+        return px, py
+
+    @staticmethod
+    def visualize(x, y, fig=None, ax=None):
+        #plt.ion() # will work maybe?
+        plt.plot(x,y, '.')
+        plt.draw()
+        plt.show(block=False)
+        return fig, ax
 
     def __call__(self, data):
         pts = [self.proc_frame(*d) for d in data]
@@ -48,7 +61,7 @@ def main():
     # process + visualize points
     pd = PointDumper()
     pts = pd(data)
-    plt.plot(pts[0], pts[1], '.')
+    #plt.plot(pts[0], pts[1], '.')
     plt.show()
 
 if __name__ == "__main__":

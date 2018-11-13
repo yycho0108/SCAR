@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 """
 Collect data as the robot drives around the object
 """
@@ -19,6 +21,7 @@ from geometry_msgs.msg import Pose, Twist, Vector3
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker
 
+from scar_core.point_dumper import PointDumper
 
 class dataCollector:
 
@@ -32,7 +35,7 @@ class dataCollector:
         self.y = 0
         self.theta = 0
         self.ranges = []
-        self.img = None
+        self.img = []
 
         self.bridge = CvBridge()
 
