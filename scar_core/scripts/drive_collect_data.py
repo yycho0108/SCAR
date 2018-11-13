@@ -9,6 +9,7 @@ from PIL import Image as PImage
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas
+import csv
 
 import rospy
 from sensor_msgs.msg import Image, LaserScan
@@ -31,6 +32,9 @@ class dataCollector:
         self.y = 0
         self.theta = 0
         self.ranges = []
+        self.img = None
+
+        self.bridge = CvBridge()
 
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
@@ -89,18 +93,29 @@ class dataCollector:
 
     def setImage(self, img):
 
-        img = self.bridge.imgmsg_to_cv2(img, desired_encoding="rgb8")
+        img = self.bridge.imgmsg_to_cv2(img, desired_encoding="bgr8")
        # img = PImage.open(img)
         img = cv2.resize(img, (160, 120), interpolation=cv2.INTER_AREA)
-        img = np.array(img)
         self.img = img
+
         
     def run(self):
 
     	f = open("data.csv" , "w+")
-    	f.writerow("x", "y", "theta", "scan")
+    	f.write("x,y,theta,scan\n")
+    	count = 0
     	while not rospy.is_shutdown():
-    		f.writerow(self.x, self.y, self.theta, self.ranges)
+    		if (not len(self.ranges)==0) and (not self.img.size==0):
+	    		line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
+	    		f.write(line)
+
+	    		fileNum = "img" +str(count) +".png"
+	    		cv2.imwrite(fileNum,self.img)
+	    		count += 1
+
+	    		# rospy.sleep(.05)
+	    		self.ranges=[]
+
 
 if __name__ == "__main__":
 	dc = dataCollector()
