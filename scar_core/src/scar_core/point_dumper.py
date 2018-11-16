@@ -14,6 +14,8 @@ class PointDumper(object):
         if self.viz_:
             self.fig_, self.ax_ = plt.subplots(1,1)
 
+        
+
     def proc_frame(self, x,y,h,r):
         # known angular spacings
         n = len(r)

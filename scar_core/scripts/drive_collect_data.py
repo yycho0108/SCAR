@@ -17,7 +17,7 @@ import pandas
 import csv
 
 import rospy
-from sensor_msgs.msg import Image, LaserScan
+from sensor_msgs.msg import Image, LaserScan, PointCloud
 from std_msgs.msg import String
 from tf.transformations import euler_from_quaternion, rotation_matrix, quaternion_from_matrix
 from geometry_msgs.msg import Pose, Twist, Vector3
@@ -53,7 +53,8 @@ class dataCollector:
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
         self.vizPub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
         rospy.init_node('data_collection')
-        rospy.Subscriber("/scan", LaserScan, self.checkLaser)
+        rospy.Subscriber("/stable_scan", LaserScan, self.checkLaser)
+        rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)#TODO
         rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
 
@@ -75,9 +76,19 @@ class dataCollector:
     def checkLaser(self, scan):
         """
         Pulls laser scan data
+
+        TOOD set interoior angle where we know the object will be to reduce scans
         """
         self.ranges = scan.ranges
 
+    def checkPoints(self, msg):
+        """
+        Time matched LIDAR
+        TOOD set interoior angle where we know the object will be to reduce scans
+        
+        """
+
+        self.points = np.transpose([(p.x, p.y) for p in msg.points])
 
 
 
@@ -116,23 +127,32 @@ class dataCollector:
         f = open(filename, "w+")
         f.write("x,y,theta,scan\n")
         count = 0
+
+        image_enabled = False
         while not rospy.is_shutdown():
-            if (not len(self.ranges)==0) and (not np.size(self.img)==0):
+            
+            self.publishVelocity(0.1,0.15)
+
+            if (not len(self.ranges)==0):
+                if image_enabled and np.size(self.img) == 0:
+                    continue
+
                 # online visualization
                 rospy.loginfo_throttle(1.0, 'System Online : ({},{},{})'.format(self.x,self.y,self.theta))
 
-                pd.proc_frame(self.x, self.y, self.theta, self.ranges)
+                # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
+                pd.visualize(self.points[0], self.points[1])
                 line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
                 f.write(line)
 
-                fileNum = self.data_path+"img" +str(count) +".png"
-                cv2.imwrite(fileNum,self.img)
-                count += 1
-
+                if image_enabled:
+                    fileNum = self.data_path+"img" +str(count) +".png"
+                    cv2.imwrite(fileNum,self.img)
+                    count += 1 
                 self.ranges=[]
             #v=wr
             #Radius of 1 meter
-            self.publishVelocity(0.1,0.1)
+            
 
 
 if __name__ == "__main__":
