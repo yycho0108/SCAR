@@ -105,7 +105,7 @@ class dataCollector:
 
         
     def run(self):
-        pd = PointDumper()
+        pd = PointDumper(viz=True)
     	#driver = ShapeDriver(10,.25)
     	#driver.run()
 
@@ -116,7 +116,7 @@ class dataCollector:
     	while not rospy.is_shutdown():
     		if (not len(self.ranges)==0) and (not self.img.size==0):
                         # online visualization
-                        pd.proc_frame(self.x, self.y, self.theta, self.ranges, viz=True)
+                        pd.proc_frame(self.x, self.y, self.theta, self.ranges)
 	    		line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
 	    		f.write(line)
 
