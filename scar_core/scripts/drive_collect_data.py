@@ -30,6 +30,8 @@ class dataCollector:
 
     def __init__(self):
 
+        self.debugOn = False
+
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
         self.angVector = Vector3(x=0.0, y=0.0, z=0.0)
@@ -42,7 +44,10 @@ class dataCollector:
 
         self.bridge = CvBridge()
 
-        self.data_path = "/tmp/"
+        #Ben
+        self.data_path = "/home/bziemann/data/"
+        #Jaime
+        #self.data_path = "/tmp/"
         
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
@@ -68,10 +73,10 @@ class dataCollector:
 
 
     def checkLaser(self, scan):
-    	"""
-		Pulls laser scan data
-    	"""
-    	self.ranges = scan.ranges
+        """
+        Pulls laser scan data
+        """
+        self.ranges = scan.ranges
 
 
 
@@ -106,27 +111,30 @@ class dataCollector:
         
     def run(self):
         pd = PointDumper()
-    	#driver = ShapeDriver(10,.25)
-    	#driver.run()
 
         filename = os.path.join(self.data_path, 'data.csv')
-    	f = open(filename, "w+")
-    	f.write("x,y,theta,scan\n")
-    	count = 0
-    	while not rospy.is_shutdown():
-    		if (not len(self.ranges)==0) and (not self.img.size==0):
-                        # online visualization
-                        pd.proc_frame(self.x, self.y, self.theta, self.ranges, viz=True)
-	    		line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
-	    		f.write(line)
+        f = open(filename, "w+")
+        f.write("x,y,theta,scan\n")
+        count = 0
+        while not rospy.is_shutdown():
+            if (not len(self.ranges)==0) and (not np.size(self.img)==0):
+                # online visualization
+                rospy.loginfo_throttle(1.0, 'System Online : ({},{},{})'.format(self.x,self.y,self.theta))
 
-	    		fileNum = self.data_path+"img" +str(count) +".png"
-	    		cv2.imwrite(fileNum,self.img)
-	    		count += 1
+                pd.proc_frame(self.x, self.y, self.theta, self.ranges, viz=True)
+                line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
+                f.write(line)
 
-	    		self.ranges=[]
+                fileNum = self.data_path+"img" +str(count) +".png"
+                cv2.imwrite(fileNum,self.img)
+                count += 1
+
+                self.ranges=[]
+            #v=wr
+            #Radius of 1 meter
+            self.publishVelocity(0.1,0.1)
 
 
 if __name__ == "__main__":
-	dc = dataCollector()
-	dc.run()
+    dc = dataCollector()
+    dc.run()
