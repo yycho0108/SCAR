@@ -9,13 +9,15 @@ def R(x):
     return np.asarray(r, dtype=np.float32)
 
 class PointDumper(object):
-    def __init__(self):
-        pass
+    def __init__(self, viz=False):
+        self.viz_ = viz
+        if self.viz_:
+            self.fig_, self.ax_ = plt.subplots(1,1)
 
-    @staticmethod
-    def proc_frame(x,y,h,r, viz=False):
+    def proc_frame(self, x,y,h,r):
         # known angular spacings
-        a = np.linspace(0, 2*np.pi, 360, endpoint=True)
+        n = len(r)
+        a = np.linspace(0, 2*np.pi, n, endpoint=True)
         c, s = np.cos(a), np.sin(a)
         dx, dy = r*c, r*s # in robot frame
 
@@ -25,19 +27,17 @@ class PointDumper(object):
         idx = np.isfinite(r)
 
         px, py = (x+dx)[idx], (y+dy)[idx]
-        if viz:
-            PointDumper.visualize(px, py)
+        if self.viz_:
+            self.visualize(px, py)
         return px, py
 
-    @staticmethod
-    def visualize(x, y, fig=None, ax=None):
+    def visualize(self, x, y):
         #plt.ion() # will work maybe?
-        plt.plot(x,y, '.')
-        plt.draw()
+        self.ax_.plot(x,y, '.')
+        #self.ax_.draw()
         plt.pause(0.001)
         #plt.draw()
         #plt.show()
-        return fig, ax
 
     def __call__(self, data):
         pts = [self.proc_frame(*d) for d in data]
@@ -46,8 +46,8 @@ class PointDumper(object):
 
 def main():
     # generate "fake" data
-    n = 10 # number of frames
-    m = 361 # number of scans  
+    n = 100 # number of frames
+    m = 360 # number of scans  
     x,y = np.random.uniform(-5.0, 5.0, size=(2,n))
     h  = np.random.uniform(-np.pi, np.pi, size=n)
     r = np.random.uniform(0.2, 5.0, size=(n,m))
@@ -60,7 +60,7 @@ def main():
     data = zip(x,y,h,r)
 
     # process + visualize points
-    pd = PointDumper()
+    pd = PointDumper(viz=True)
     pts = pd(data)
     #plt.plot(pts[0], pts[1], '.')
     plt.show()

@@ -110,8 +110,8 @@ class dataCollector:
 
         
     def run(self):
-        pd = PointDumper()
-
+        pd = PointDumper(viz=True)
+        
         filename = os.path.join(self.data_path, 'data.csv')
         f = open(filename, "w+")
         f.write("x,y,theta,scan\n")
@@ -121,7 +121,7 @@ class dataCollector:
                 # online visualization
                 rospy.loginfo_throttle(1.0, 'System Online : ({},{},{})'.format(self.x,self.y,self.theta))
 
-                pd.proc_frame(self.x, self.y, self.theta, self.ranges, viz=True)
+                pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
                 f.write(line)
 
