@@ -9,6 +9,7 @@ import os
 from cv_bridge import CvBridge
 
 from drive_ngon import ShapeDriver
+from icp import icp
 
 from PIL import Image as PImage
 import matplotlib.pyplot as plt
@@ -39,10 +40,16 @@ class dataCollector:
         self.x = 0
         self.y = 0
         self.theta = 0
-        self.ranges = []
+        self.ranges = [] #From stable scan
+        self.old_ranges = []
+        self.points = [] #From projected stable scan
+        self.old_points = []
         self.img = []
 
         self.bridge = CvBridge()
+
+        #ICP
+        self.icp = icp()
 
         #Ben
         self.data_path = "/home/bziemann/data/"
@@ -79,18 +86,20 @@ class dataCollector:
 
         TOOD set interoior angle where we know the object will be to reduce scans
         """
+        self.old_ranges = self.ranges
         self.ranges = scan.ranges
+
 
     def checkPoints(self, msg):
         """
-        Time matched LIDAR
+        Time matched LIDAR. Produces much better scans, however not all LIDAR
+        is collected
         TOOD set interoior angle where we know the object will be to reduce scans
         
         """
-
+        self.old_points = self.points
         self.points = np.transpose([(p.x, p.y) for p in msg.points])
-
-
+      
 
     def setLocation(self, odom):
         """
@@ -131,11 +140,34 @@ class dataCollector:
         image_enabled = False
         while not rospy.is_shutdown():
             
-            self.publishVelocity(0.1,0.15)
+            #self.publishVelocity(0.1,0.15)
 
-            if (not len(self.ranges)==0):
+            if (not len(self.points)==0) and (not len(self.old_points)==0):
                 if image_enabled and np.size(self.img) == 0:
                     continue
+
+                #icp calculations
+                # print(self.old_points)
+                # print("The length is %i" %len(self.old_points))
+                # print(self.old_points[200:340]) #TODO why isn't this giving errors?
+
+
+                #Fix the difference in # of points
+                past_points = np.array(self.old_points)
+                curr_points = np.array(self.points)
+                icp_range = min(past_points.shape[1],curr_points.shape[1])
+
+                edge_fuzz = 2 #How much of the edge to ignore
+                if (past_points.shape[1] > curr_points.shape[1]):
+                       
+                        past = past_points[:, edge_fuzz:curr_points.shape[1]-edge_fuzz]
+                        curr = curr_points[:, edge_fuzz:-edge_fuzz]
+
+                else:
+                        past = past_points[:, edge_fuzz:-edge_fuzz]
+                        curr = curr_points[:, edge_fuzz:past_points.shape[1]-edge_fuzz]
+                        
+                trans, diff, num_iter = self.icp.icp(past, curr)
 
                 # online visualization
                 rospy.loginfo_throttle(1.0, 'System Online : ({},{},{})'.format(self.x,self.y,self.theta))
@@ -152,6 +184,9 @@ class dataCollector:
                 self.ranges=[]
             #v=wr
             #Radius of 1 meter
+
+    def icpTest(self):
+        x=1
             
 
 
