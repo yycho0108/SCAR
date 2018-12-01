@@ -35,6 +35,13 @@ def applyTransformToPoints(T, points):
 class dataCollector:
 
     def __init__(self):
+        # define constant parameters
+        self.map_w = 5.0 #5x5 physical map
+        self.map_h = 5.0
+        self.map_res = 0.02
+
+        self.seen_thresh = 3.0
+        self.sensor_radius = 5.0
 
         self.debugOn = False
 
@@ -55,7 +62,9 @@ class dataCollector:
         #Define a grid resolution to easily check if a point is in map
         self.map_res = .02
         self.seen_thresh = 3 #How many times a point must be seen to be included
-        self.map = np.zeros((250,250),np.float32)
+        n = int(np.ceil(self.map_h / self.map_res))
+        m = int(np.ceil(self.map_w / self.map_res))
+        self.map = np.zeros(shape=(n,m),dtype=np.float32)
 
         #Map 2
         #Define a dictionary whose keys are coordinate tuples and values
@@ -84,7 +93,6 @@ class dataCollector:
         rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)
         rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
-
 
     def realToMap(self, point):
         """
