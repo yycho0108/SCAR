@@ -18,7 +18,7 @@ class icp():
           t: mx1 translation vector
         '''
 
-        assert A.shape == B.shape
+        # assert A.shape == B.shape
 
         # get number of dimensions
         m = A.shape[1]
@@ -61,7 +61,11 @@ class icp():
             indices: dst indices of the nearest neighbor
         '''
 
-        assert src.shape == dst.shape
+        print '=========='
+        print src.shape
+        print dst.shape
+
+        assert src.shape[1:] == dst.shape[1:]
 
         neigh = NearestNeighbors(n_neighbors=1)
         neigh.fit(dst)
@@ -84,16 +88,26 @@ class icp():
             i: number of iterations to converge
         '''
 
-        assert A.shape == B.shape
+        # assert A.shape == B.shape
 
         # get number of dimensions
-        m = A.shape[1]
+        ma = A.shape[1]
+        mb = B.shape[1]
+
 
         # make points homogeneous, copy them to maintain the originals
-        src = np.ones((m+1,A.shape[0]))
-        dst = np.ones((m+1,B.shape[0]))
-        src[:m,:] = np.copy(A.T)
-        dst[:m,:] = np.copy(B.T)
+        src = np.ones((ma+1,A.shape[0]))
+
+        print B.shape[0]
+        dst = np.ones((mb+1,B.shape[0]))
+
+        print src.shape
+        print dst.shape
+        print A.shape
+        print B.shape
+        
+        src[:ma,:] = A.T
+        dst[:mb,:] = B.T
 
         # apply the initial pose estimation
         if init_pose is not None:
@@ -103,10 +117,10 @@ class icp():
 
         for i in range(max_iterations):
             # find the nearest neighbors between the current source and destination points
-            distances, indices = self.nearest_neighbor(src[:m,:].T, dst[:m,:].T)
+            distances, indices = self.nearest_neighbor(src[:-1,:].T, dst[:-1,:].T)
 
             # compute the transformation between the current source and nearest destination points
-            T,_,_ = self.best_fit_transform(src[:m,:].T, dst[:m,indices].T)
+            T,_,_ = self.best_fit_transform(src[:-1,:].T, dst[:-1,indices].T)
 
             # update the current source
             src = np.dot(T, src)
@@ -118,6 +132,6 @@ class icp():
             prev_error = mean_error
 
         # calculate final transformation
-        T,_,_ = self.best_fit_transform(A, src[:m,:].T)
+        T,_,_ = self.best_fit_transform(A, src[:-1,:].T)
 
         return T, distances, i
