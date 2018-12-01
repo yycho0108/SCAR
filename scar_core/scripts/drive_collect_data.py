@@ -48,6 +48,7 @@ class dataCollector:
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
         self.angVector = Vector3(x=0.0, y=0.0, z=0.0)
+        self.lidar_range = 5.0
 
         self.x = 0
         self.y = 0
@@ -73,6 +74,7 @@ class dataCollector:
         self.map_dict = {}
         self.true_map = {}
 
+        #Offset based on ICP, (x,y,theta)
         self.map_to_odom = np.zeros(shape=3)
 
         self.bridge = CvBridge()
@@ -104,19 +106,33 @@ class dataCollector:
         """
 
         #Get rid of out of bound points
-        if point[0] > 2.5 or point[0] < -2.5:
-            return (None,None)
-        if point[1] > 2.5 or point[1]<-2.5:
-            return (None,None)
+        if math.sqrt(math.pow(point.x,2)+math.pow(point.y,2)) > 2.5:
+            return
         
         mapX = round(abs(-2.5+point.x)/self.map_res, 0)
-        mapY = round(abs(2.5+point.y)/self.map_res, 0) # indices
+        mapY = round(abs(2.5+point.y)/self.map_res, 0)
         self.map[mapY][mapX] += 1
 
+
     def mapToReal(self, point):
-        # (i,j) --> (x,y)
-        # TODO : Implement
-        pass
+        """
+        Converts grid map point to odometry position
+
+        point: (i,j)
+        returns (x,y) coordinate tuple in odometry frame
+        
+        """
+        if point[0] >= 125:
+            realX = -point[0]*self.map_res+2.5
+        else:
+            realX = -(point[0]*self.map_res-2.5)
+        
+        if point[1] < 125:
+            realY = -point[1]*self.map_res+2.5
+        else:
+            realY = -(point[1]*self.map_res-2.5)
+        
+        return (realX, realY)
 
     def realToMap2(self, point):
         """
@@ -126,8 +142,17 @@ class dataCollector:
         point: rosmsg from pointCloud containing x,y data odometry for LIDAR
         scans
         """
-        px = round(point.x, 2) #TODO : make decimal points configurable
-        py = round(point.y, 2)
+
+        #Decimal places to round
+        res = self.map_res
+        count = 0
+        while res < 1:
+            res *= 10
+            count+=1
+        res = count
+
+        px = round(point.x, res)
+        py = round(point.y, res)
         #Already seen
         if (px,py) in self.map_dict:
             self.map_dict[(px,py)] += 1
@@ -141,11 +166,12 @@ class dataCollector:
         else:
             self.map_dict[(px,py)] = 1
 
+
     def publishVelocity(self, linX, angZ):
         """
         Publishes velocities to make the robot move
 
-        linX is a floating point between 0 and 1 to control the robot's x linear velocity
+        linX is a floating point betwmapToRealeen 0 and 1 to control the robot's x linear velocity
         angZ is a floating point between 0 and 1 to control the robot's z angular velocity
         """
         if self.debugOn: print("publishing")
@@ -157,8 +183,6 @@ class dataCollector:
 
     def checkLaser(self, scan):
         """
-            #self.realToMap(p)
-            #self.realToMap2(p)
         Deprecated in favor of projected stable scan
 
         Pulls laser scan data
@@ -169,6 +193,7 @@ class dataCollector:
         """
         self.old_ranges = self.ranges
         self.ranges = scan.ranges
+
 
     def queryPoints(self):
         """
@@ -181,9 +206,8 @@ class dataCollector:
         # map_points_v1 = [self.mapToReal(p) for p in map_points_v1]
 
         # mapPoints v2
-        # TODO : make the distance configurable although it's going to be mostly the same
         map_points_v2 = [k for k in self.map_dict.iteritems() if
-                (np.linalg.norm(np.subtract(k, center)) < 5.0) and 
+                (np.linalg.norm(np.subtract(k, center)) < self.lidar_range) and 
                 (v > self.seen_thresh)
                 ]
 
@@ -194,14 +218,13 @@ class dataCollector:
         Time matched LIDAR. Produces much better scans, however not all LIDAR
         is collected
 
-        TODO:
         set interior angle where we know the object will be to reduce scans
-        correct points with ICP before adding them to map
         """
         self.old_points = self.points
         self.points = []
-        # TODO : update the points based on the computed offset between map->odom
         for p in msg.points:
+            p.x += self.map_to_odom[0]
+            p.y += self.map_to_odom[1]
             self.points.append(np.float32(p.x,p.y))
 
     def setLocation(self, odom):
@@ -235,10 +258,18 @@ class dataCollector:
         #img = PImage.open(img)
         img = cv2.resize(img, (160, 120), interpolation=cv2.INTER_AREA)
         self.img = img
+
         
     def update_current_map_to_odom_offset_estimate(self, t):
-        pass
+        """
+        Update the robot's offset based on ICP result. Used in estimated position offset from odometry
+
+        t = homogenuous transformation matrix output of ICP
+        """
+        rotation_trans = np.dot(t[:2,:2], np.array([[self.x, self.y]]).T)
+        self.map_to_odom = np.array([t[0][2], t[1][2], math.atan2(rotation_trans[1],rotation_trans[0])])
         
+
     def run(self):
         #Begin visualization
         pd = PointDumper(viz=True)
@@ -272,7 +303,7 @@ class dataCollector:
 
                 #ICP transform
                 trans, diff, num_iter = self.icp.icp(self.points, map_points)
-
+                
                 # update the offset
                 self.update_current_map_to_odom_offset_estimate(trans)
 
