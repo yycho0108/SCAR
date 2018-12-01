@@ -142,8 +142,8 @@ def main():
     from matplotlib import pyplot as plt
     # parameters
     n_size = 100
-    n_repeat = 10
-    s_noise = 0.1
+    n_repeat = 100
+    s_noise = 1.0
 
     pt_map = np.concatenate([get_line(n=33, s=1.0) for _ in range(3)], axis=0)
 

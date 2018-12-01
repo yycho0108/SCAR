@@ -8,7 +8,7 @@ import cv2
 import os
 from cv_bridge import CvBridge
 
-from icp import icp
+from icp import ICP
 
 from PIL import Image as PImage
 import matplotlib.pyplot as plt
@@ -25,6 +25,12 @@ from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker
 
 from scar_core.point_dumper import PointDumper
+
+def applyTransformToPoints(T, points):
+    # points = Nx2
+    # T = [RT
+    #      01]
+    return np.dot(points, T[:2,:2].T) + T[:2,2]
 
 class dataCollector:
 
@@ -49,7 +55,7 @@ class dataCollector:
         #Define a grid resolution to easily check if a point is in map
         self.map_res = .02
         self.seen_thresh = 3 #How many times a point must be seen to be included
-        self.map = np.zeroes((250,250),np.float)
+        self.map = np.zeros((250,250),np.float32)
 
         #Map 2
         #Define a dictionary whose keys are coordinate tuples and values
@@ -58,10 +64,12 @@ class dataCollector:
         self.map_dict = {}
         self.true_map = {}
 
+        self.map_to_odom = np.zeros(shape=3)
+
         self.bridge = CvBridge()
 
         #ICP
-        self.icp = icp()
+        self.icp = ICP()
 
         #Ben
         self.data_path = "/home/bziemann/data/"
@@ -73,7 +81,7 @@ class dataCollector:
         self.vizPub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
         rospy.init_node('data_collection')
         rospy.Subscriber("/stable_scan", LaserScan, self.checkLaser)
-        rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)#TODO
+        rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)
         rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
 
@@ -94,9 +102,13 @@ class dataCollector:
             return (None,None)
         
         mapX = round(abs(-2.5+point.x)/self.map_res, 0)
-        mapY = round(abs(2.5+point.y)/self.map_res, 0)
+        mapY = round(abs(2.5+point.y)/self.map_res, 0) # indices
         self.map[mapY][mapX] += 1
 
+    def mapToReal(self, point):
+        # (i,j) --> (x,y)
+        # TODO : Implement
+        pass
 
     def realToMap2(self, point):
         """
@@ -106,7 +118,7 @@ class dataCollector:
         point: rosmsg from pointCloud containing x,y data odometry for LIDAR
         scans
         """
-        px = round(point.x, 2)
+        px = round(point.x, 2) #TODO : make decimal points configurable
         py = round(point.y, 2)
         #Already seen
         if (px,py) in self.map_dict:
@@ -120,8 +132,6 @@ class dataCollector:
         #New point
         else:
             self.map_dict[(px,py)] = 1
-
-
 
     def publishVelocity(self, linX, angZ):
         """
@@ -139,6 +149,8 @@ class dataCollector:
 
     def checkLaser(self, scan):
         """
+            #self.realToMap(p)
+            #self.realToMap2(p)
         Deprecated in favor of projected stable scan
 
         Pulls laser scan data
@@ -150,23 +162,39 @@ class dataCollector:
         self.old_ranges = self.ranges
         self.ranges = scan.ranges
 
+    def queryPoints(self):
+        """
+        Points from the map that we care about matching with the incoming scan.
+        """
+        center = (self.x, self.y)
+        
+        # mapPoints v1
+        # map_points_v1 = np.where((self.map>=self.seen_thresh)) # --> (i,j) indices
+        # map_points_v1 = [self.mapToReal(p) for p in map_points_v1]
+
+        # mapPoints v2
+        # TODO : make the distance configurable although it's going to be mostly the same
+        map_points_v2 = [k for k in self.map_dict.iteritems() if
+                (np.linalg.norm(np.subtract(k, center)) < 5.0) and 
+                (v > self.seen_thresh)
+                ]
+
+        return np.asarray(map_points_v2, dtype=np.float32)
 
     def checkPoints(self, msg):
         """
         Time matched LIDAR. Produces much better scans, however not all LIDAR
         is collected
 
-        TOOD:
-        set interoior angle where we know the object will be to reduce scans
+        TODO:
+        set interior angle where we know the object will be to reduce scans
         correct points with ICP before adding them to map
         """
         self.old_points = self.points
         self.points = []
+        # TODO : update the points based on the computed offset between map->odom
         for p in msg.points:
             self.points.append(np.float32(p.x,p.y))
-            self.realToMap(p)
-            self.realToMap2(p)
-      
 
     def setLocation(self, odom):
         """
@@ -199,7 +227,9 @@ class dataCollector:
         #img = PImage.open(img)
         img = cv2.resize(img, (160, 120), interpolation=cv2.INTER_AREA)
         self.img = img
-
+        
+    def update_current_map_to_odom_offset_estimate(self, t):
+        pass
         
     def run(self):
         #Begin visualization
@@ -229,18 +259,25 @@ class dataCollector:
                 if image_enabled and np.size(self.img) == 0:
                     continue
 
+                # query the points in the map and perform ICP on them
+                map_points = self.queryPoints()
+
                 #ICP transform
-                #TODO how much of the data set to apply ICP to? All accepted points? All from last scan?
-                past_points = np.array(self.old_points)
-                curr_points = np.array(self.points)                        
-                trans, diff, num_iter = self.icp.icp(curr_points, past_points)
-                print(trans)
+                trans, diff, num_iter = self.icp.icp(self.points, map_points)
+
+                # update the offset
+                self.update_current_map_to_odom_offset_estimate(trans)
+
+                # update the map
+                points_t = applyTransformToPoints(trans, self.points)
+                [self.realToMap2(p) for p in points_t]
 
                 #Online visualization
                 rospy.loginfo_throttle(1.0, 'System Online : ({},{},{})'.format(self.x,self.y,self.theta))
 
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
-                pd.visualize(self.points[:,0], self.points[:,1])
+                pd.visualize(map_points[:,0], map_points[:,1])
+
                 line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
                 f.write(line)
 
