@@ -133,6 +133,7 @@ class dataCollector:
             realY = -(point[1]*self.map_res-2.5)
         
         return (realX, realY)
+        
 
     def realToMap2(self, point):
         """
