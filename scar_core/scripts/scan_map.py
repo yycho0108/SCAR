@@ -2,7 +2,7 @@ import numpy as np
 from collections import defaultdict
 from matplotlib import pyplot as plt
 
-class MapV1(object):
+class DenseMap(object):
     """ Map Occ-Grid Representation """
     def __init__(self, w=5.0, h=5.0, res=0.02):
         self.w_ = w
@@ -66,7 +66,7 @@ class MapV1(object):
             ax = plt.gca()
         ax.imshow(map_norm, cmap='gray')
 
-class MapV2(object):
+class SparseMap(object):
     """ Map Dict Representation """
     def __init__(self, res=0.01):
         # self.map_[(x,y)] = count!
@@ -106,14 +106,14 @@ def main():
     points = np.random.uniform(-2.5, 2.5, size=(5,2))
     fig, (ax0,ax1) = plt.subplots(1,2)
 
-    map1 = MapV1()
+    map1 = DenseMap()
     map1.update(points)
     map1.update(points)
     map1.update(points)
     print map1.query(origin=(0,0))
     map1.show(ax=ax0)
 
-    map2 = MapV2()
+    map2 = SparseMap()
     map2.update(points)
     map2.update(points)
     map2.update(points)

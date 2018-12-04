@@ -12,6 +12,6 @@
 
     <!-- more accurately reflect reality -->
     <node name="scan_relay" pkg="topic_tools" type="relay" args="scan stable_scan"/>
-    <node name="fix_scan_fast" pkg="neato_node" type="fix_scan_fast"/>
+    <node name="fix_scan_fast" pkg="neato_node" type="fix_scan_fast" if="false"/>
 
 </launch>

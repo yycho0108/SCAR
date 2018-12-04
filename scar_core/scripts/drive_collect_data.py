@@ -13,6 +13,7 @@ from icp import ICP
 from PIL import Image as PImage
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 import pandas
 import csv
 
@@ -25,6 +26,8 @@ from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker
 
 from scar_core.point_dumper import PointDumper
+
+from scan_map import DenseMap, SparseMap
 
 def applyTransformToPoints(T, points):
     # points = Nx2
@@ -39,13 +42,19 @@ def R2(x):
 
 class dataCollector:
 
-    def __init__(self):
+    def __init__(self,
+            map_args=None,
+            ):
         # define constant parameters
         self.map_w = 5.0 #5x5 physical map
         self.map_h = 5.0
-        self.map_res = 0.02
 
-        self.seen_thresh = 3.0
+        if map_args is None:
+            # supply default arguments
+            map_args = dict(w=5.0,h=5.0,res=0.02)
+
+        #self.map_ = MapV1(*map_args)
+
         self.sensor_radius = 5.0
 
         self.debugOn = False
@@ -66,7 +75,7 @@ class dataCollector:
 
         #Map 1
         #Define a grid resolution to easily check if a point is in map
-        self.map_res = .02
+        self.map_res = .01
         self.seen_thresh = 3 #How many times a point must be seen to be included
         n = int(np.ceil(self.map_h / self.map_res))
         m = int(np.ceil(self.map_w / self.map_res))
@@ -228,11 +237,15 @@ class dataCollector:
         set interior angle where we know the object will be to reduce scans
         """
         self.old_points = self.points
+        
+        points = [ [p.x, p.y] for p in msg.points]
         self.points = []
-        for p in msg.points:
-            p.x += self.map_to_odom[0]
-            p.y += self.map_to_odom[1]
-            self.points.append(np.float32([p.x,p.y]))
+
+        T_o2m = np.eye(3)
+        T_o2m[:2,:2] = R2(self.map_to_odom[-1])
+        T_o2m[:2,2]  = self.map_to_odom[:2]
+
+        self.points = applyTransformToPoints(T_o2m, points)
 
     def setLocation(self, odom):
         """
@@ -273,9 +286,20 @@ class dataCollector:
 
         t = homogenuous transformation matrix output of ICP
         """
-        rotation_trans = np.dot(t[:2,:2], np.array([[self.x, self.y]]).T)
-        self.map_to_odom = np.array([t[0][2], t[1][2], np.arctan2(rotation_trans[1],rotation_trans[0])])
-        
+        #rotation_trans = np.dot(t[:2,:2], np.array([[self.x, self.y]]).T)
+        #self.map_to_odom = np.array([t[0][2], t[1][2], np.arctan2(rotation_trans[1],rotation_trans[0])])
+
+        dx0, dy0, dh0 = self.map_to_odom # what it used to be
+
+        # current error
+        ddx, ddy = t[:2,2]
+        ddh = math.atan2(t[1,0], t[0,0])
+
+        # apparently?
+        dx1, dy1 = R2(ddh).dot([dx0,dy0]) + [ddx,ddy]
+        dh1 = (dh0 + ddh)
+
+        self.map_to_odom = np.asarray([dx1,dy1,dh1])
 
     def run(self):
         #Begin visualization
@@ -317,18 +341,27 @@ class dataCollector:
 
                 if np.size(map_points) > 0:
                     #ICP transform
-                    trans, diff, num_iter = self.icp.icp(np.asarray(self.points), np.asarray(map_points))
+                    trans, diff, num_iter = self.icp.icp(
+                            np.asarray(self.points),
+                            np.asarray(map_points))
+
+                    offset_euclidean = np.linalg.norm(trans[:2,2])
+                    if offset_euclidean > 1.0:
+                        print('trans', trans)
                 
                     # update the offset
                     self.update_current_map_to_odom_offset_estimate(trans)
 
                 # update the map
-                T_o2m = np.eye(3)
-                T_o2m[:2,:2] = R2(self.map_to_odom[-1])
-                T_o2m[:2,2]  = self.map_to_odom[:2]
-                points_t = applyTransformToPoints(T_o2m, self.points)
+                #T_o2m = np.eye(3)
+                #T_o2m[:2,:2] = R2(self.map_to_odom[-1])
+                #T_o2m[:2,2]  = self.map_to_odom[:2]
+                #applyTransformToPoints(T_o2m, self.points)
 
+                points_t = self.points
                 [self.realToMap2(p) for p in points_t]
+                self.points = []
+
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
                     pd.visualize(map_points[:,0], map_points[:,1])

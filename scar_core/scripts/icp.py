@@ -89,7 +89,6 @@ class ICP():
 
         ndim = A.shape[1]
         nA, nB = A.shape[0], B.shape[0]
-        print A.shape, B.shape
         assert(A.shape[1:] == B.shape[1:])
 
         # make points homogeneous, copy them to maintain the originals
