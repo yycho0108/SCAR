@@ -33,10 +33,16 @@ class PointDumper(object):
             self.visualize(px, py)
         return px, py
 
-    def visualize(self, x, y):
+    def visualize(self, x, y, clear=False, draw=False, label=''):
+        if clear:
+            self.ax_.cla()
         #plt.ion() # will work maybe?
         self.ax_.plot(x,y, '.')
         #self.ax_.draw()
+
+        if draw:
+            self.fig_.canvas.draw()
+            self.ax_.legend()
         plt.pause(0.001)
         #plt.draw()
         #plt.show()

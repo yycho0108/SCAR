@@ -76,7 +76,7 @@ class dataCollector:
         #Map 1
         #Define a grid resolution to easily check if a point is in map
         self.map_res = .01
-        self.seen_thresh = 3 #How many times a point must be seen to be included
+        self.seen_thresh = 2 #How many times a point must be seen to be included
         n = int(np.ceil(self.map_h / self.map_res))
         m = int(np.ceil(self.map_w / self.map_res))
         self.map = np.zeros(shape=(n,m),dtype=np.float32)
@@ -159,15 +159,16 @@ class dataCollector:
         """
 
         #Decimal places to round
-        res = self.map_res
-        count = 0
-        while res < 1:
-            res *= 10
-            count+=1
-        res = count
+        res = 1 #self.map_res
 
-        px = round(point[0], res)
-        py = round(point[1], res)
+        #count = 0
+        #while res < 1:
+        #    res *= 10
+        #    count+=1
+        #res = count
+
+        px = np.round(point[0], res)
+        py = np.round(point[1], res)
         #Already seen
         if (px,py) in self.map_dict:
             self.map_dict[(px,py)] += 1
@@ -323,7 +324,9 @@ class dataCollector:
             #self.publishVelocity(linX, angZs)
 
             #Don't do anything if there is no data to work with
-            if (not len(self.points)==0) and (not len(self.old_points)==0):
+
+            points = self.points
+            if (not len(points)==0) and (not len(self.old_points)==0):
 
                 #Break if no image data
                 if image_enabled and np.size(self.img) == 0:
@@ -341,9 +344,15 @@ class dataCollector:
 
                 if np.size(map_points) > 0:
                     #ICP transform
-                    trans, diff, num_iter = self.icp.icp(
-                            np.asarray(self.points),
-                            np.asarray(map_points))
+                    try:
+                        trans, diff, num_iter = self.icp.icp(
+                                np.asarray(points),
+                                np.asarray(map_points))
+                    except Exception as e:
+                        print 'e', e
+                        print map_points
+                        print map_points.shape
+                        raise e
 
                     offset_euclidean = np.linalg.norm(trans[:2,2])
                     if offset_euclidean > 1.0:
@@ -358,13 +367,12 @@ class dataCollector:
                 #T_o2m[:2,2]  = self.map_to_odom[:2]
                 #applyTransformToPoints(T_o2m, self.points)
 
-                points_t = self.points
-                [self.realToMap2(p) for p in points_t]
-                self.points = []
+                [self.realToMap2(p) for p in points]
 
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
-                    pd.visualize(map_points[:,0], map_points[:,1])
+                    pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
+                    pd.visualize(points[:,0], points[:,1], clear=False, draw=True, label='scan')
 
                 if image_enabled:
                     fileNum = self.data_path+"img" +str(count) +".png"
