@@ -32,6 +32,11 @@ def applyTransformToPoints(T, points):
     #      01]
     return np.dot(points, T[:2,:2].T) + T[:2,2]
 
+def R2(x):
+    c = np.cos(x)
+    s = np.sin(x)
+    return np.reshape([c,-s,s,c], (2,2))
+
 class dataCollector:
 
     def __init__(self):
@@ -83,9 +88,9 @@ class dataCollector:
         self.icp = ICP()
 
         #Ben
-        self.data_path = "/home/bziemann/data/"
+        #self.data_path = "/home/bziemann/data/"
         #Jaime
-        #self.data_path = "/tmp/"
+        self.data_path = "/tmp/"
         
         #ROS2/.02
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
@@ -106,7 +111,7 @@ class dataCollector:
         """
 
         #Get rid of out of bound points
-        if math.sqrt(math.pow(point.x,2)+math.pow(point.y,2)) > 2.5:
+        if np.sqrt(np.power(point.x,2)+np.power(point.y,2)) > 2.5:
             return
         
         mapX = round(abs(-2.5+point.x)/self.map_res, 0)
@@ -152,8 +157,8 @@ class dataCollector:
             count+=1
         res = count
 
-        px = round(point.x, res)
-        py = round(point.y, res)
+        px = round(point[0], res)
+        py = round(point[1], res)
         #Already seen
         if (px,py) in self.map_dict:
             self.map_dict[(px,py)] += 1
@@ -207,7 +212,8 @@ class dataCollector:
         # map_points_v1 = [self.mapToReal(p) for p in map_points_v1]
 
         # mapPoints v2
-        map_points_v2 = [k for k in self.map_dict.iteritems() if
+
+        map_points_v2 = [k for (k,v) in self.map_dict.iteritems() if
                 (np.linalg.norm(np.subtract(k, center)) < self.lidar_range) and 
                 (v > self.seen_thresh)
                 ]
@@ -226,7 +232,7 @@ class dataCollector:
         for p in msg.points:
             p.x += self.map_to_odom[0]
             p.y += self.map_to_odom[1]
-            self.points.append(np.float32(p.x,p.y))
+            self.points.append(np.float32([p.x,p.y]))
 
     def setLocation(self, odom):
         """
@@ -268,7 +274,7 @@ class dataCollector:
         t = homogenuous transformation matrix output of ICP
         """
         rotation_trans = np.dot(t[:2,:2], np.array([[self.x, self.y]]).T)
-        self.map_to_odom = np.array([t[0][2], t[1][2], math.atan2(rotation_trans[1],rotation_trans[0])])
+        self.map_to_odom = np.array([t[0][2], t[1][2], np.arctan2(rotation_trans[1],rotation_trans[0])])
         
 
     def run(self):
@@ -302,24 +308,30 @@ class dataCollector:
                 # query the points in the map and perform ICP on them
                 map_points = self.queryPoints()
 
-                #ICP transform
-                trans, diff, num_iter = self.icp.icp(self.points, map_points)
-                
-                # update the offset
-                self.update_current_map_to_odom_offset_estimate(trans)
-
-                # update the map
-                points_t = applyTransformToPoints(trans, self.points)
-                [self.realToMap2(p) for p in points_t]
-
                 #Online visualization
                 rospy.loginfo_throttle(1.0, 'System Online : ({},{},{})'.format(self.x,self.y,self.theta))
 
-                # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
-                pd.visualize(map_points[:,0], map_points[:,1])
-
+                # logging
                 line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
                 f.write(line)
+
+                if np.size(map_points) > 0:
+                    #ICP transform
+                    trans, diff, num_iter = self.icp.icp(np.asarray(self.points), np.asarray(map_points))
+                
+                    # update the offset
+                    self.update_current_map_to_odom_offset_estimate(trans)
+
+                # update the map
+                T_o2m = np.eye(3)
+                T_o2m[:2,:2] = R2(self.map_to_odom[-1])
+                T_o2m[:2,2]  = self.map_to_odom[:2]
+                points_t = applyTransformToPoints(T_o2m, self.points)
+
+                [self.realToMap2(p) for p in points_t]
+                # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
+                if len(map_points) > 0:
+                    pd.visualize(map_points[:,0], map_points[:,1])
 
                 if image_enabled:
                     fileNum = self.data_path+"img" +str(count) +".png"
