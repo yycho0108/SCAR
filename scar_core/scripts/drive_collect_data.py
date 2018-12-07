@@ -42,31 +42,30 @@ def R2(x):
 
 class dataCollector:
 
-    def __init__(self,
-            map_args=None,
-            ):
-        # define constant parameters
+    def __init__(self):
+        # debug
+        self.debugOn = False
+
+        # map params
         self.map_w = 5.0 #5x5 physical map
         self.map_h = 5.0
+        self.map_ = SparseMap(res = 0.1)
 
-        if map_args is None:
-            # supply default arguments
-            map_args = dict(w=5.0,h=5.0,res=0.02)
-
-        #self.map_ = MapV1(*map_args)
-
+        # query params
         self.sensor_radius = 5.0
-
-        self.debugOn = False
+        self.seen_thresh = 2
 
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
         self.angVector = Vector3(x=0.0, y=0.0, z=0.0)
         self.lidar_range = 5.0
 
+        # 2d pose
         self.x = 0
         self.y = 0
         self.theta = 0
+
+        # sensor data cache
         self.ranges = [] #From stable scan
         self.old_ranges = []
         self.points = [] #From projected stable scan
@@ -109,6 +108,18 @@ class dataCollector:
         rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)
         rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
+
+    def convert_points(self, points):
+        # pt = Nx2
+        # points in odom frame -> map frame
+        # TODO : maybe easier if braodcasting map frame to ROS Tf
+        # currently handled internally.
+
+        T_o2m = np.eye(3)
+        T_o2m[:2,:2] = R2(self.map_to_odom[-1])
+        T_o2m[:2,2]  = self.map_to_odom[:2]
+        points = applyTransformToPoints(T_o2m, points)
+        return points
 
     def realToMap(self, point):
         """
@@ -157,30 +168,32 @@ class dataCollector:
         point: rosmsg from pointCloud containing x,y data odometry for LIDAR
         scans
         """
+        # TODO : filter prior to updates
+        self.map_.update( point )
 
-        #Decimal places to round
-        res = 1 #self.map_res
+        ##Decimal places to round
+        #res = 1 #self.map_res
 
-        #count = 0
-        #while res < 1:
-        #    res *= 10
-        #    count+=1
-        #res = count
+        ##count = 0
+        ##while res < 1:
+        ##    res *= 10
+        ##    count+=1
+        ##res = count
 
-        px = np.round(point[0], res)
-        py = np.round(point[1], res)
-        #Already seen
-        if (px,py) in self.map_dict:
-            self.map_dict[(px,py)] += 1
-            #Already visualized point
-            if (px,py) in self.true_map:
-                return
-            #Create visualized point
-            elif self.map_dict[(px,py)] > self.seen_thresh:
-                self.true_map[(px, py)] = None
-        #New point
-        else:
-            self.map_dict[(px,py)] = 1
+        #px = np.round(point[0], res)
+        #py = np.round(point[1], res)
+        ##Already seen
+        #if (px,py) in self.map_dict:
+        #    self.map_dict[(px,py)] += 1
+        #    #Already visualized point
+        #    if (px,py) in self.true_map:
+        #        return
+        #    #Create visualized point
+        #    elif self.map_dict[(px,py)] > self.seen_thresh:
+        #        self.true_map[(px, py)] = None
+        ##New point
+        #else:
+        #    self.map_dict[(px,py)] = 1
 
 
     def publishVelocity(self, linX, angZ):
@@ -216,19 +229,25 @@ class dataCollector:
         Points from the map that we care about matching with the incoming scan.
         """
         center = (self.x, self.y)
+        points = self.map_.query(
+                origin = (self.x, self.y),
+                radius = self.sensor_radius,
+                thresh = self.seen_thresh
+                )
+        return points
         
-        # mapPoints v1
-        # map_points_v1 = np.where((self.map>=self.seen_thresh)) # --> (i,j) indices
-        # map_points_v1 = [self.mapToReal(p) for p in map_points_v1]
+        ## mapPoints v1
+        ## map_points_v1 = np.where((self.map>=self.seen_thresh)) # --> (i,j) indices
+        ## map_points_v1 = [self.mapToReal(p) for p in map_points_v1]
 
-        # mapPoints v2
+        ## mapPoints v2
 
-        map_points_v2 = [k for (k,v) in self.map_dict.iteritems() if
-                (np.linalg.norm(np.subtract(k, center)) < self.lidar_range) and 
-                (v > self.seen_thresh)
-                ]
+        #map_points_v2 = [k for (k,v) in self.map_dict.iteritems() if
+        #        (np.linalg.norm(np.subtract(k, center)) < self.lidar_range) and 
+        #        (v > self.seen_thresh)
+        #        ]
 
-        return np.asarray(map_points_v2, dtype=np.float32)
+        #return np.asarray(map_points_v2, dtype=np.float32)
 
     def checkPoints(self, msg):
         """
@@ -238,15 +257,13 @@ class dataCollector:
         set interior angle where we know the object will be to reduce scans
         """
         self.old_points = self.points
-        
         points = [ [p.x, p.y] for p in msg.points]
-        self.points = []
-
-        T_o2m = np.eye(3)
-        T_o2m[:2,:2] = R2(self.map_to_odom[-1])
-        T_o2m[:2,2]  = self.map_to_odom[:2]
-
-        self.points = applyTransformToPoints(T_o2m, points)
+        # convert incoming points to map frame
+        self.points = self.convert_points(points)
+        #T_o2m = np.eye(3)
+        #T_o2m[:2,:2] = R2(self.map_to_odom[-1])
+        #T_o2m[:2,2]  = self.map_to_odom[:2]
+        #self.points = applyTransformToPoints(T_o2m, points)
 
     def setLocation(self, odom):
         """
@@ -262,11 +279,12 @@ class dataCollector:
                                 pose.orientation.z,
                                 pose.orientation.w)
         angles = euler_from_quaternion(orientation_tuple)
-        self.x = pose.position.x
-        self.y = pose.position.y
-        self.theta = angles[2]
-        return (pose.position.x, pose.position.y, angles[2])
 
+        # convert to map position
+        # TODO : conversion happens here, or delay?
+
+        self.x, self.y = self.convert_points([[pose.position.x, pose.position.y]])[0]
+        self.theta = angles[2] + self.map_to_odom[-1]
 
     def setImage(self, img):
         """
@@ -315,8 +333,9 @@ class dataCollector:
         #To prevent image overflow 
         image_enabled = False
 
+        
         while not rospy.is_shutdown():
-            
+            count += 1
             #Make the neato move in circle of desired radius
             #r = .5
             #linX = 0.1
@@ -342,7 +361,9 @@ class dataCollector:
                 line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
                 f.write(line)
 
-                if np.size(map_points) > 0:
+                trans = None
+                if np.size(map_points) > 20: # TODO : set this parameter
+                    rospy.loginfo('ready')
                     #ICP transform
                     try:
                         trans, diff, num_iter = self.icp.icp(
@@ -359,15 +380,19 @@ class dataCollector:
                         print('trans', trans)
                 
                     # update the offset
-                    self.update_current_map_to_odom_offset_estimate(trans)
+                    if count >= 3:
+                        self.update_current_map_to_odom_offset_estimate(trans)
 
                 # update the map
                 #T_o2m = np.eye(3)
                 #T_o2m[:2,:2] = R2(self.map_to_odom[-1])
                 #T_o2m[:2,2]  = self.map_to_odom[:2]
                 #applyTransformToPoints(T_o2m, self.points)
-
-                [self.realToMap2(p) for p in points]
+                if trans is not None:
+                    self.map_.update(applyTransformToPoints(trans, points))
+                else:
+                    self.map_.update(points)
+                #[self.realToMap2(p) for p in points]
 
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
@@ -377,7 +402,6 @@ class dataCollector:
                 if image_enabled:
                     fileNum = self.data_path+"img" +str(count) +".png"
                     cv2.imwrite(fileNum,self.img)
-                    count += 1 
                 self.ranges=[]
 
 

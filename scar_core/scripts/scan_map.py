@@ -91,8 +91,10 @@ class SparseMap(object):
     def query(self, origin,
             radius=5.0, thresh=3.0):
         map_xy = self.k2xy(self.map_.keys())
+        if len(map_xy) <= 0:
+            return []
         mask_v = np.greater_equal(self.map_.values(), thresh)
-        mask_p = np.linalg.norm(map_xy - np.reshape(origin, [1,2])) < radius
+        mask_p = np.linalg.norm(map_xy - np.reshape(origin, [1,2]), axis=-1) < radius
         mask   = np.logical_and(mask_v, mask_p)
         return map_xy[mask]
 
