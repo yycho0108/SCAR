@@ -72,21 +72,6 @@ class dataCollector:
         self.old_points = []
         self.img = []
 
-        #Map 1
-        #Define a grid resolution to easily check if a point is in map
-        self.map_res = .01
-        self.seen_thresh = 2 #How many times a point must be seen to be included
-        n = int(np.ceil(self.map_h / self.map_res))
-        m = int(np.ceil(self.map_w / self.map_res))
-        self.map = np.zeros(shape=(n,m),dtype=np.float32)
-
-        #Map 2
-        #Define a dictionary whose keys are coordinate tuples and values
-        #are number of times seen. Faster because only checks points that
-        #were actually seen but never gets rid of points
-        self.map_dict = {}
-        self.true_map = {}
-
         #Offset based on ICP, (x,y,theta)
         self.map_to_odom = np.zeros(shape=3)
 
@@ -120,81 +105,6 @@ class dataCollector:
         T_o2m[:2,2]  = self.map_to_odom[:2]
         points = applyTransformToPoints(T_o2m, points)
         return points
-
-    def realToMap(self, point):
-        """
-        Takes a point from the projected scan and converts it
-        to our internal map
-
-        point: rosmsg from pointCloud containing x,y data odometry for LIDAR
-        scans
-        """
-
-        #Get rid of out of bound points
-        if np.sqrt(np.power(point.x,2)+np.power(point.y,2)) > 2.5:
-            return
-        
-        mapX = round(abs(-2.5+point.x)/self.map_res, 0)
-        mapY = round(abs(2.5+point.y)/self.map_res, 0)
-        self.map[mapY][mapX] += 1
-
-
-    def mapToReal(self, point):
-        """
-        Converts grid map point to odometry position
-
-        point: (i,j)
-        returns (x,y) coordinate tuple in odometry frame
-        
-        """
-        if point[0] >= 125:
-            realX = -point[0]*self.map_res+2.5
-        else:
-            realX = -(point[0]*self.map_res-2.5)
-        
-        if point[1] < 125:
-            realY = -point[1]*self.map_res+2.5
-        else:
-            realY = -(point[1]*self.map_res-2.5)
-        
-        return (realX, realY)
-        
-
-    def realToMap2(self, point):
-        """
-        Take a point from the projected scan and add it to
-        our dictionary map
-
-        point: rosmsg from pointCloud containing x,y data odometry for LIDAR
-        scans
-        """
-        # TODO : filter prior to updates
-        self.map_.update( point )
-
-        ##Decimal places to round
-        #res = 1 #self.map_res
-
-        ##count = 0
-        ##while res < 1:
-        ##    res *= 10
-        ##    count+=1
-        ##res = count
-
-        #px = np.round(point[0], res)
-        #py = np.round(point[1], res)
-        ##Already seen
-        #if (px,py) in self.map_dict:
-        #    self.map_dict[(px,py)] += 1
-        #    #Already visualized point
-        #    if (px,py) in self.true_map:
-        #        return
-        #    #Create visualized point
-        #    elif self.map_dict[(px,py)] > self.seen_thresh:
-        #        self.true_map[(px, py)] = None
-        ##New point
-        #else:
-        #    self.map_dict[(px,py)] = 1
-
 
     def publishVelocity(self, linX, angZ):
         """
@@ -235,19 +145,6 @@ class dataCollector:
                 thresh = self.seen_thresh
                 )
         return points
-        
-        ## mapPoints v1
-        ## map_points_v1 = np.where((self.map>=self.seen_thresh)) # --> (i,j) indices
-        ## map_points_v1 = [self.mapToReal(p) for p in map_points_v1]
-
-        ## mapPoints v2
-
-        #map_points_v2 = [k for (k,v) in self.map_dict.iteritems() if
-        #        (np.linalg.norm(np.subtract(k, center)) < self.lidar_range) and 
-        #        (v > self.seen_thresh)
-        #        ]
-
-        #return np.asarray(map_points_v2, dtype=np.float32)
 
     def checkPoints(self, msg):
         """
@@ -282,7 +179,6 @@ class dataCollector:
 
         # convert to map position
         # TODO : conversion happens here, or delay?
-
         self.x, self.y = self.convert_points([[pose.position.x, pose.position.y]])[0]
         self.theta = angles[2] + self.map_to_odom[-1]
 
@@ -305,19 +201,15 @@ class dataCollector:
 
         t = homogenuous transformation matrix output of ICP
         """
-        #rotation_trans = np.dot(t[:2,:2], np.array([[self.x, self.y]]).T)
-        #self.map_to_odom = np.array([t[0][2], t[1][2], np.arctan2(rotation_trans[1],rotation_trans[0])])
-
         dx0, dy0, dh0 = self.map_to_odom # what it used to be
 
         # current error
         ddx, ddy = t[:2,2]
         ddh = math.atan2(t[1,0], t[0,0])
 
-        # apparently?
+        # update with coupled transform
         dx1, dy1 = R2(ddh).dot([dx0,dy0]) + [ddx,ddy]
         dh1 = (dh0 + ddh)
-
         self.map_to_odom = np.asarray([dx1,dy1,dh1])
 
     def run(self):
@@ -333,7 +225,6 @@ class dataCollector:
         #To prevent image overflow 
         image_enabled = False
 
-        
         while not rospy.is_shutdown():
             count += 1
             #Make the neato move in circle of desired radius
@@ -362,7 +253,7 @@ class dataCollector:
                 f.write(line)
 
                 trans = None
-                if np.size(map_points) > 20: # TODO : set this parameter
+                if np.size(map_points) > 0:
                     rospy.loginfo('ready')
                     #ICP transform
                     try:
@@ -379,20 +270,17 @@ class dataCollector:
                     if offset_euclidean > 1.0:
                         print('trans', trans)
                 
-                    # update the offset
+                    # update the offset - but only if more than 3 scans have been registered so far
+                    # (prevent premature transform computation)
                     if count >= 3:
                         self.update_current_map_to_odom_offset_estimate(trans)
 
-                # update the map
-                #T_o2m = np.eye(3)
-                #T_o2m[:2,:2] = R2(self.map_to_odom[-1])
-                #T_o2m[:2,2]  = self.map_to_odom[:2]
-                #applyTransformToPoints(T_o2m, self.points)
+                # update the map with the transformed points
+                # TODO : explicitly compute correspondences
                 if trans is not None:
                     self.map_.update(applyTransformToPoints(trans, points))
                 else:
                     self.map_.update(points)
-                #[self.realToMap2(p) for p in points]
 
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
