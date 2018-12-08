@@ -104,6 +104,29 @@ class SparseMap(object):
             ax = plt.gca()
         ax.scatter(xy[:,0], xy[:,1])
 
+def gkern(kernlen=21, nsig=3):
+    """Returns a 2D Gaussian kernel array."""
+
+    interval = (2*nsig+1.)/(kernlen)
+    x = np.linspace(-nsig-interval/2., nsig+interval/2., kernlen+1)
+    kern1d = np.diff(st.norm.cdf(x))
+    kernel_raw = np.sqrt(np.outer(kern1d, kern1d))
+    kernel = kernel_raw/kernel_raw.sum()
+    return kernel
+
+class GaussianMap(object):
+    def __init__(self, res=0.02):
+        self.res_ = res
+        pass
+    def update(self, p_xy, s=0.08):
+        # kernel size
+        #size = s / self.res_
+        #ker  = gkern(
+        pass
+    def query(self, origin,
+            radius=5.0, thresh=3.0):
+        pass
+
 def main():
     points = np.random.uniform(-2.5, 2.5, size=(5,2))
     fig, (ax0,ax1) = plt.subplots(1,2)
