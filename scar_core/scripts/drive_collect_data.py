@@ -28,6 +28,7 @@ from visualization_msgs.msg import Marker
 from scar_core.point_dumper import PointDumper
 
 from scan_map import DenseMap, SparseMap
+import tf
 
 def applyTransformToPoints(T, points):
     # points = Nx2
@@ -64,6 +65,7 @@ class dataCollector:
         self.x = 0
         self.y = 0
         self.theta = 0
+        self.path = np.empty(shape=(0,3), dtype=np.float32)
 
         # sensor data cache
         self.ranges = [] #From stable scan
@@ -88,6 +90,7 @@ class dataCollector:
         #ROS2/.02
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
         self.vizPub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
+        self.tfb_ = tf.TransformBroadcaster()
         rospy.init_node('data_collection')
         rospy.Subscriber("/stable_scan", LaserScan, self.checkLaser)
         rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)
@@ -119,7 +122,6 @@ class dataCollector:
         self.angVector.z = angZ
         self.pub.publish(Twist(linear=self.linVector, angular=self.angVector))
 
-
     def checkLaser(self, scan):
         """
         Deprecated in favor of projected stable scan
@@ -132,7 +134,6 @@ class dataCollector:
         """
         self.old_ranges = self.ranges
         self.ranges = scan.ranges
-
 
     def queryPoints(self):
         """
@@ -253,11 +254,10 @@ class dataCollector:
                 f.write(line)
 
                 trans = None
-                if np.size(map_points) > 0:
-                    rospy.loginfo('ready')
+                if np.size(map_points) > 20:
                     #ICP transform
                     try:
-                        trans, diff, num_iter = self.icp.icp(
+                        trans, diff, idx, num_iter = self.icp.icp(
                                 np.asarray(points),
                                 np.asarray(map_points))
                     except Exception as e:
@@ -279,13 +279,25 @@ class dataCollector:
                 # TODO : explicitly compute correspondences
                 if trans is not None:
                     self.map_.update(applyTransformToPoints(trans, points))
+
+                    # send correction to ROS TF Stream
+                    m2ox, m2oy, m2oh = self.map_to_odom
+                    self.tfb_.sendTransform(
+                            [m2ox, m2oy, 0],
+                            tf.transformations.quaternion_from_euler(0, 0, m2oh),
+                            rospy.Time.now(),
+                            'odom',
+                            'map')
                 else:
                     self.map_.update(points)
+
+                self.path = np.concatenate([self.path, [[self.x, self.y, self.theta]] ], axis=0)
 
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
                     pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
                     pd.visualize(points[:,0], points[:,1], clear=False, draw=True, label='scan')
+                    pd.visualize(self.path[:,0], self.path[:,1], clear=False, draw=True, label='path', style='-')
 
                 if image_enabled:
                     fileNum = self.data_path+"img" +str(count) +".png"

@@ -14,8 +14,6 @@ class PointDumper(object):
         if self.viz_:
             self.fig_, self.ax_ = plt.subplots(1,1)
 
-        
-
     def proc_frame(self, x,y,h,r):
         # known angular spacings
         n = len(r)
@@ -33,11 +31,14 @@ class PointDumper(object):
             self.visualize(px, py)
         return px, py
 
-    def visualize(self, x, y, clear=False, draw=False, label=''):
+    def visualize(self, x, y,
+            clear=False, draw=False, label='',
+            style='.'
+            ):
         if clear:
             self.ax_.cla()
         #plt.ion() # will work maybe?
-        self.ax_.plot(x,y, '.')
+        self.ax_.plot(x,y, style)
         #self.ax_.draw()
 
         if draw:
