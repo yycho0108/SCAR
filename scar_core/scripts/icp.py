@@ -50,6 +50,46 @@ class ICP():
         return T, R, t
 
     @staticmethod
+    def best_fit_transform_ransac(A, B,
+            sample_ratio=0.5,
+            thresh=1.0,
+            max_iter=100,
+            min_in_ratio=0.6
+            ):
+        n = len(A)
+        m_s = int(n * sample_ratio)
+        m_i = int(n * min_in_ratio)
+
+        # TODO : check m size
+
+        best_err = np.inf
+        best_fit = None
+
+        for i in range(max_iter):
+            idx = np.random.choice(n, m_s, replace=False)
+            T, R, t = ICP.best_fit_transform(A[idx], B[idx])
+
+            # compute pointwise error
+            err_pt = (np.dot(A, R.T)  + t) - B
+            err_pt = np.linalg.norm(err_pt, axis=-1)
+            # get inliers + net error
+            msk_pt = (err_pt < thresh)
+            err = err_pt.sum()
+            n_in = np.sum(msk_pt)
+
+            if (n_in > m_i) and (err < best_err):
+                # satisfy inlier requirement + good error
+                best_err = err
+                best_fit = (T, R, t, msk_pt)
+                break
+        if best_fit is None:
+            return None
+
+        msk = best_fit[-1]
+
+        return T, R, t, msk
+
+    @staticmethod
     def nearest_neighbor(src, dst):
         '''
         Find the nearest (Euclidean) neighbor in dst for each point in src
@@ -110,6 +150,7 @@ class ICP():
 
             # compute the transformation between the current source and nearest destination points
             T,_,_ = ICP.best_fit_transform(src[:,:-1], dst[indices,:-1])
+            # T, _, _, msk = ICP.best_fit_transform_ransac(src[:,:-1], dst[indices,:-1])
 
             # update the current source
             src = np.dot(src,T.T) # right-multiply transform matrix
@@ -123,7 +164,7 @@ class ICP():
         # calculate final transformation
         T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
 
-        return T, distances, i
+        return T, distances, indices, i
 
 def Rmat(x):
     c,s = np.cos(x), np.sin(x)
@@ -161,6 +202,7 @@ def main():
     errs = []
     #n_sub  = 20
     n_subs = np.linspace(1, len(pt_map), num=10).astype(np.int32)
+    #n_subs = [50]
     for n_sub in n_subs:
         print('n_sub = {}'.format(n_sub))
         err_i = []
@@ -174,7 +216,7 @@ def main():
 
             # apply noise
             pt_scan = np.random.normal(loc=pt_scan, scale=s_noise)
-            T, distances, iterations = ICP.icp(pt_scan, pt_map,
+            T, distances, indices, iterations = ICP.icp(pt_scan, pt_map,
                     tolerance=0.000001)
 
             pt_scan_r = pt_scan.dot(T[:2,:2].T) + T[:2,2].reshape(1,2)
