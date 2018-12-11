@@ -1,10 +1,11 @@
 import numpy as np
 from collections import defaultdict
 from matplotlib import pyplot as plt
+import cv2
 
 class DenseMap(object):
     """ Map Occ-Grid Representation """
-    def __init__(self, w=5.0, h=5.0, res=0.02):
+    def __init__(self, w=10.0, h=10.0, res=0.02):
         self.w_ = w
         self.h_ = h
         self.res_ = res
@@ -22,21 +23,20 @@ class DenseMap(object):
         j = np.int32(np.round((-y / self.res_)+(self.m_ /2)))
         return np.stack([i,j], axis=-1)
 
-    def ij2xy(self, uv):
+    def ij2xy(self, ij):
         # returns Nx2 map-coordinate points and return their physical representation
         # in the map, x is pointing up and y is pointing left
         # i.e. +x = -v, +y = -u
-        i,j = np.transpose(uv)
+        i,j = np.transpose(ij)
         x = -(i-(self.n_/2))*self.res_
         y = -(j-(self.m_/2))*self.res_
         return np.stack([x,y], axis=-1)
 
-    def update(self, p_xy, c=1.0):
+    def update(self, p_xy, c=1.0, origin=None):
         p_ij = self.xy2ij(p_xy) # Nx2
         i, j = p_ij.T
-        a = np.logical_and
+        mask = np.logical_and.reduce([0<=i, i<self.n_, 0<=j, j<self.m_])
         # range-check mask
-        mask = a(a((0<=i), (i<self.n_)),a((0<=j), (j<self.m_)))
         # log range check failures
         #if not np.all(mask):
         #    print('Some of the passed points were not plottable in the map!')
@@ -56,12 +56,15 @@ class DenseMap(object):
             return []
         map_xy = self.ij2xy(map_ij)
         dist = np.linalg.norm(map_xy - np.expand_dims(origin, 0), axis=-1)
+        print np.sum( dist < radius ), ' ?' 
         # TODO : ray-casting?
         return map_xy[dist < radius]
 
     def show(self, ax=None):
-        mmx, mmn = self.map_.max(), self.map_.min()
-        map_norm = (self.map_ - mmn) / (mmx-mmn+1e-9)
+        # dilate just for visualization
+        map_norm = cv2.dilate(self.map_, np.ones((3,3), dtype=np.uint8))
+        map_norm = np.float32(map_norm > 0)
+        # show
         if ax is None:
             ax = plt.gca()
         ax.imshow(map_norm, cmap='gray')
@@ -83,7 +86,7 @@ class SparseMap(object):
         k = np.asarray(k, dtype=np.float32) # Nx2
         return k * self.res_
 
-    def update(self, p_xy, c=1.0):
+    def update(self, p_xy, c=1.0, origin=None):
         p_k = self.xy2k(p_xy)
         for k in p_k:
             self.map_[tuple(k)] += c
@@ -128,21 +131,27 @@ class GaussianMap(object):
         pass
 
 def main():
-    points = np.random.uniform(-2.5, 2.5, size=(5,2))
+    points = np.random.uniform(-2.5, 2.5, size=(10,2))
     fig, (ax0,ax1) = plt.subplots(1,2)
 
     map1 = DenseMap()
+
+    print '!!'
+    print points
+    print map1.ij2xy(map1.xy2ij( points ))
+    print '=='
+
     map1.update(points)
     map1.update(points)
     map1.update(points)
-    print map1.query(origin=(0,0))
+    print 'q1', map1.query(origin=(0,0))
     map1.show(ax=ax0)
 
     map2 = SparseMap()
     map2.update(points)
     map2.update(points)
     map2.update(points)
-    print map2.query(origin=(0,0))
+    print 'q2', map2.query(origin=(0,0))
     map2.show(ax=ax1)
 
     plt.show()

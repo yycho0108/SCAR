@@ -51,6 +51,7 @@ class dataCollector:
         self.map_w = 5.0 #5x5 physical map
         self.map_h = 5.0
         self.map_ = SparseMap(res = 0.1)
+        #self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
 
         # query params
         self.sensor_radius = 5.0
@@ -90,11 +91,12 @@ class dataCollector:
         #ROS2/.02
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
         self.vizPub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
+        self.tfl_ = tf.TransformListener()
         self.tfb_ = tf.TransformBroadcaster()
         rospy.init_node('data_collection')
         rospy.Subscriber("/stable_scan", LaserScan, self.checkLaser)
         rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)
-        rospy.Subscriber("/odom", Odometry, self.setLocation)
+        #rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
 
     def convert_points(self, points):
@@ -163,6 +165,23 @@ class dataCollector:
         #T_o2m[:2,2]  = self.map_to_odom[:2]
         #self.points = applyTransformToPoints(T_o2m, points)
 
+    def setTFLocation(self):
+        try:
+            txn, qxn = self.tfl_.lookupTransform('base_link', 'odom', rospy.Time(0))
+        except Exception as e:
+            rospy.loginfo_throttle(1.0, 'Failed TF Transform : {}'.format(e))
+            return
+
+        # odom frame
+        x, y = txn[0], txn[1]
+        h    = tf.transformations.euler_from_quaternion(qxn)[-1]
+
+        x, y = self.convert_points([[x, y]])[0]
+        h    = h + self.map_to_odom[-1]
+
+        self.x, self.y = (x,y)
+        self.theta = h
+
     def setLocation(self, odom):
         """
         Convert pose (geometry_msgs.Pose) to a (x, y, theta) tuple
@@ -195,7 +214,6 @@ class dataCollector:
         img = cv2.resize(img, (160, 120), interpolation=cv2.INTER_AREA)
         self.img = img
 
-        
     def update_current_map_to_odom_offset_estimate(self, t):
         """
         Update the robot's offset based on ICP result. Used in estimated position offset from odometry
@@ -244,6 +262,7 @@ class dataCollector:
                     continue
 
                 # query the points in the map and perform ICP on them
+                #self.setTFLocation()
                 map_points = self.queryPoints()
 
                 #Online visualization
