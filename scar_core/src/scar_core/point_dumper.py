@@ -38,12 +38,13 @@ class PointDumper(object):
         if clear:
             self.ax_.cla()
         #plt.ion() # will work maybe?
-        self.ax_.plot(x,y, style)
+        self.ax_.plot(x,y, style, label=label)
         #self.ax_.draw()
 
         if draw:
-            self.fig_.canvas.draw()
             self.ax_.legend()
+            self.fig_.canvas.draw()
+            
         plt.pause(0.001)
         #plt.draw()
         #plt.show()

@@ -24,6 +24,7 @@ from tf.transformations import euler_from_quaternion, rotation_matrix, quaternio
 from geometry_msgs.msg import Pose, Twist, Vector3
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker
+from collections import defaultdict
 
 from scar_core.point_dumper import PointDumper
 
@@ -41,6 +42,16 @@ def R2(x):
     s = np.sin(x)
     return np.reshape([c,-s,s,c], (2,2))
 
+def convert_to_polar(map_points, origin_x, origin_y):
+    # TODO : maybe should rotate everything w.r.t. robot
+
+    map_points = map_points - [[origin_x, origin_y]]
+    
+    rads = np.linalg.norm(map_points, axis=-1)
+    angs = np.arctan2(map_points[:,1], map_points[:,0])
+
+    return rads, angs
+
 class dataCollector:
 
     def __init__(self):
@@ -50,8 +61,12 @@ class dataCollector:
         # map params
         self.map_w = 5.0 #5x5 physical map
         self.map_h = 5.0
-        self.map_ = SparseMap(res = 0.1)
+        self.map_ = SparseMap(res = 0.05)
         #self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
+
+        # raycast params
+        self.dist_res = .01
+        self.ang_res  = np.deg2rad(2.0)
 
         # query params
         self.sensor_radius = 5.0
@@ -93,10 +108,10 @@ class dataCollector:
         self.vizPub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
         self.tfl_ = tf.TransformListener()
         self.tfb_ = tf.TransformBroadcaster()
-        rospy.init_node('data_collection')
+        
         rospy.Subscriber("/stable_scan", LaserScan, self.checkLaser)
         rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)
-        #rospy.Subscriber("/odom", Odometry, self.setLocation)
+        rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
 
     def convert_points(self, points):
@@ -231,6 +246,35 @@ class dataCollector:
         dh1 = (dh0 + ddh)
         self.map_to_odom = np.asarray([dx1,dy1,dh1])
 
+    def raycast(self, map_points):
+        """
+        1. Get list of map points + convert to polar coordinates centered around the robot
+        2. Put the points into bins based on specified angular resolution
+        3. Go through the points and find the coordinates of the minimum radius
+        4. Return the list of points
+        """
+
+        # step 1
+        rads, angs = convert_to_polar(map_points, self.x, self.y) # 1st step
+        angs = np.round(angs / self.ang_res).astype(np.int32) # * self.ang_res
+
+        # step 2
+        rbins = defaultdict(lambda:[])
+        pbins = defaultdict(lambda:[])
+
+        for (p,r,a) in zip(map_points, rads, angs):
+            rbins[a].append(r)
+            pbins[a].append(p)
+
+        # step 3
+        points = []
+        for a in angs:
+            idx = np.argmin(rbins[a])
+            points.append(pbins[a][idx])
+
+        points = np.asarray(points, dtype=np.float32) # convert to np array
+        return points
+
     def run(self):
         #Begin visualization
         pd = PointDumper(viz=True)
@@ -272,32 +316,46 @@ class dataCollector:
                 line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
                 f.write(line)
 
+                valid_map_points = None
+
                 trans = None
                 if np.size(map_points) > 20:
                     #ICP transform
                     try:
-                        trans, diff, idx, num_iter = self.icp.icp(
-                                np.asarray(points),
-                                np.asarray(map_points))
+                        valid_map_points = self.raycast(map_points)
+                        # valid_map_points = np.asarray(map_points)
+                        print(valid_map_points)
+                        if len(valid_map_points) >= 20:
+                            trans, diff, idx, num_iter = self.icp.icp(
+                                    np.asarray(points),
+                                    valid_map_points)
+                            offset_euclidean = np.linalg.norm(trans[:2,2])
+                            if offset_euclidean > 1.0:
+                                print('trans', trans)
+                        else:
+                            trans = None
+
+
+
                     except Exception as e:
                         print 'e', e
                         print map_points
                         print map_points.shape
                         raise e
 
-                    offset_euclidean = np.linalg.norm(trans[:2,2])
-                    if offset_euclidean > 1.0:
-                        print('trans', trans)
+
                 
                     # update the offset - but only if more than 3 scans have been registered so far
                     # (prevent premature transform computation)
-                    if count >= 3:
-                        self.update_current_map_to_odom_offset_estimate(trans)
+                
 
                 # update the map with the transformed points
                 # TODO : explicitly compute correspondences
-                if trans is not None:
+                if (trans is not None) and (count >= 5):
+                    print count
+                    self.update_current_map_to_odom_offset_estimate(trans)
                     self.map_.update(applyTransformToPoints(trans, points))
+                    # self.map_update(points)
 
                     # send correction to ROS TF Stream
                     m2ox, m2oy, m2oh = self.map_to_odom
@@ -308,6 +366,7 @@ class dataCollector:
                             'odom',
                             'map')
                 else:
+                    # print('what should happen')
                     self.map_.update(points)
 
                 self.path = np.concatenate([self.path, [[self.x, self.y, self.theta]] ], axis=0)
@@ -316,7 +375,10 @@ class dataCollector:
                 if len(map_points) > 0:
                     pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
                     pd.visualize(points[:,0], points[:,1], clear=False, draw=True, label='scan')
+                    if valid_map_points is not None:
+                        pd.visualize(valid_map_points[:,0], valid_map_points[:,1], clear=False, draw=True, label='raycast')
                     pd.visualize(self.path[:,0], self.path[:,1], clear=False, draw=True, label='path', style='-')
+                    # plt.legend()
 
                 if image_enabled:
                     fileNum = self.data_path+"img" +str(count) +".png"
@@ -325,5 +387,6 @@ class dataCollector:
 
 
 if __name__ == "__main__":
+    rospy.init_node('data_collection')
     dc = dataCollector()
     dc.run()
