@@ -81,9 +81,9 @@ class dataCollector:
         #are number of times seen
         self.map_dict = {}
         self.map_final ={}
-        self.seen_thresh = 3
-        self.map_resolution = 0.01 #Meters
-        self.angle_res = .001 #Radians
+        self.seen_thresh = 1
+        self.map_resolution = 0.05 #Meters
+        self.angle_res = np.deg2rad(1) #Radians
         self.trunc_val = 4
 
         #Flag variables
@@ -343,56 +343,53 @@ class dataCollector:
                     map_final_angle[data[1]] = [coordinates]
 
 
-        #Construct current scan maps
-        # {(x,y):(dist,rounded_angle)}
-        map_scan = {}
-        # {rounded_ang:(x1,y1)}
-        map_scan_angle = {}
+        # #Construct current scan maps
+        # # {(x,y):(dist,rounded_angle)}
+        # map_scan = {}
+        # # {rounded_ang:(x1,y1)}
+        # map_scan_angle = {}
 
-        for point in points:
-            #Round points to map res
-            px = self.round_to_res(point[0], self.map_resolution)
-            py = self.round_to_res(point[1], self.map_resolution)
-            point = (px,py)
+        # for point in points:
+        #     #Round points to map res
+        #     px = self.round_to_res(point[0], self.map_resolution)
+        #     py = self.round_to_res(point[1], self.map_resolution)
+        #     point = (px,py)
 
-            dist = self.dist_to_point(point)
-            dist = self.round_to_res(dist, self.map_resolution)
-            angle = self.angle_to_point(point)[0]
-            angle = self.round_to_res(angle, self.angle_res)
+        #     dist = self.dist_to_point(point)
+        #     dist = self.round_to_res(dist, self.map_resolution)
+        #     angle = self.angle_to_point(point)[0]
+        #     angle = self.round_to_res(angle, self.angle_res)
 
-            if point in map_scan:
-                map_scan[point] = (min(map_scan[point][0], dist), angle)
-            else:
-                map_scan[point] = (dist, angle)
+        #     if point in map_scan:
+        #         map_scan[point] = (min(map_scan[point][0], dist), angle)
+        #     else:
+        #         map_scan[point] = (dist, angle)
 
 
-            if angle in map_scan_angle:
-                map_scan_angle[angle].append(point)
-            else:
-                map_scan_angle[angle] = [point]
+        #     if angle in map_scan_angle:
+        #         map_scan_angle[angle].append(point)
+        #     else:
+        #         map_scan_angle[angle] = [point]
         
 
-        # #Create list of points to ignore that are "behind" other points
-        ignore_points = [] 
-        for (coordinates, data) in map_scan.iteritems():
-            if data[1] in map_final_angle:
-                for p in map_final_angle[data[1]]:
-                    #Compare distances to avoid directly overlapping problems
-                    if self.map_final[p][0] >= data[0]:
-                        ignore_points.append(p)
+        # # #Create list of points to ignore that are "behind" other points
+        # ignore_points = [] 
+        # for (coordinates, data) in map_scan.iteritems():
+        #     if data[1] in map_final_angle:
+        #         for p in map_final_angle[data[1]]:
+        #             #Compare distances to avoid directly overlapping problems
+        #             if self.map_final[p][0] >= data[0]:
+        #                 ignore_points.append(p)
 
 
         #Create a list of points on the map to consider for ICP
         map_to_consider = {}
-        for (coordinates, data) in self.map_final.iteritems():
-            #Filter for sight
-            if coordinates in ignore_points:
-                continue
-            #Filter for distance
-            elif self.map_final[coordinates][0] >= self.lidar_range:
-                continue
+        for (angle, data) in map_final_angle.iteritems():
             
-            map_to_consider[coordinates] = None
+            dist = np.linalg.norm(data, axis=-1) # distance to points
+            xy_min = data[np.argmin(dist)]
+            print(math.degrees(angle),xy_min)
+            map_to_consider[xy_min] = None
         
         return map_to_consider
 
@@ -437,6 +434,7 @@ class dataCollector:
                 #Determine which points should be considered for ICP
                 map_curr = self.raycast(offset_points)
                 map_curr = self.map_to_matrix(map_curr)
+                considered = np.asarray(map_curr)
 
                 #Get ICP trasnformation from (offset?) points to final map
                 trans, diff, num_iter = self.icp.icp(np.asarray(offset_points), np.asarray(map_curr))
@@ -459,7 +457,7 @@ class dataCollector:
 
                 if (len(map_curr) > 0) and (len(self.points) > 0) and (len(trans_points) > 0):
                     self.point_dumper1.visualize(map_curr[:,0], map_curr[:,1], clear=True, label='map')
-                    self.point_dumper2.visualize(points[:,0], points[:,1], clear=True, label='scan')
+                    self.point_dumper2.visualize(considered[:,0], considered[:,1], clear=True, label='scan')
                     self.point_dumper3.visualize(trans_points[:,0], trans_points[:,1], clear=False, draw=True, label='transformed')
                     #self.point_dumper1.visualize([self.x_odom], [self.y_odom], clear=False, draw=True, label='robot')
                     #self.point_dumper2.visualize([self.x_odom], [self.y_odom], clear=False, draw=True, label='robot')
