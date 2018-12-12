@@ -166,8 +166,8 @@ class ICP():
             distances, indices = ICP.nearest_neighbor(src[:,:-1], dst[:,:-1])
 
             # compute the transformation between the current source and nearest destination points
-            #T,_,_ = ICP.best_fit_transform(src[:,:-1], dst[indices,:-1])
-            T,_,_ = ICP.best_fit_transform_point_to_plane(src[:,:-1], dst[indices,:-1])
+            T,_,_ = ICP.best_fit_transform(src[:,:-1], dst[indices,:-1])
+            #T,_,_ = ICP.best_fit_transform_point_to_plane(src[:,:-1], dst[indices,:-1])
 
             src = np.dot(src,T.T) # right-multiply transform matrix
 
@@ -178,26 +178,35 @@ class ICP():
             prev_error = mean_error
 
         # calculate final transformation
-        #T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
-        T,_,_ = ICP.best_fit_transform_point_to_plane(A, src[:,:-1])
+        T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
+        #T,_,_ = ICP.best_fit_transform_point_to_plane(A, src[:,:-1])
 
         # alternative - refine transform
         # (mostly, compute the mask and validate truth)
         # opencv version - RANSAC
         # doesn't really do anything
-        #T3, msk = cv2.estimateAffinePartial2D(
-        #        A[None],
-        #        src[None,:,:-1],
-        #        method=cv2.FM_RANSAC,
-        #        ransacReprojThreshold=0.005,
-        #        maxIters=2000,
-        #        confidence=0.999,
-        #        refineIters=100
-        #        )#, False)
-        #print '{}/{}'.format(msk.sum(), msk.size)
-        #print T, T3
+        T3, msk = cv2.estimateAffine2D(
+                src[None,:,:-1],
+                dst[None,indices,:-1],
+                method=cv2.FM_RANSAC,
+                ransacReprojThreshold=0.1,
+                maxIters=2000,
+                confidence=0.9999,
+                refineIters=100
+                )
 
-        return T, distances, indices, i
+        ms = msk.sum()
+        if ms != msk.size:
+            print '{}% = {}/{}'.format(float(ms)/msk.size*100, ms, msk.size)
+
+        inlier_ratio = float(ms) / msk.size
+
+        if T3 is not None:
+            #print T[:2] - T3
+            T3 = np.concatenate([T3, [[0,0,1]] ], axis=0)
+            T = T.dot(T3)
+
+        return T, distances, indices, i, inlier_ratio
 
 def Rmat(x):
     c,s = np.cos(x), np.sin(x)

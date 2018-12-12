@@ -2,6 +2,13 @@ import numpy as np
 from collections import defaultdict
 from matplotlib import pyplot as plt
 import cv2
+from sklearn.neighbors import NearestNeighbors
+
+def to_polar(pts, o):
+    dxy = pts - np.reshape(o, [1,2])
+    r = np.linalg.norm(dxy, axis=-1)
+    h = np.arctan2(dxy[:,1], dxy[:,0])
+    return np.stack([r,h], axis=-1)
 
 class DenseMap(object):
     """ Map Occ-Grid Representation """
@@ -87,6 +94,27 @@ class SparseMap(object):
         return k * self.res_
 
     def update(self, p_xy, c=1.0, origin=None):
+        # 1. clear
+        map_xy = self.query(origin, thresh=0.0)
+        if len(map_xy) > 0:
+            p_rh   = to_polar(p_xy,   origin) #N,2
+            map_rh = to_polar(map_xy, origin) #N,2
+
+            neigh = NearestNeighbors(n_neighbors=1)
+            neigh.fit(p_rh[:,1:])
+            distances, indices = neigh.kneighbors(map_rh[:,1:],
+                    return_distance=True)
+            distances = distances[:,0]
+            indices = indices[:,0]
+
+            rmask = p_rh[indices,0] > map_rh[:,0]
+            hmask = (distances < np.deg2rad(1.0))
+            mask = np.logical_and(rmask, hmask)
+
+            for k in self.xy2k(map_xy[mask]):
+                self.map_[tuple(k)] -= 1.0
+
+        # 2. add
         p_k = self.xy2k(p_xy)
         for k in p_k:
             self.map_[tuple(k)] += c
@@ -117,15 +145,34 @@ def gkern(kernlen=21, nsig=3):
     kernel = kernel_raw/kernel_raw.sum()
     return kernel
 
-class GaussianMap(object):
+class ProbMap(DenseMap):
     def __init__(self, res=0.02):
         self.res_ = res
         pass
-    def update(self, p_xy, s=0.08):
-        # kernel size
-        #size = s / self.res_
-        #ker  = gkern(
-        pass
+
+    def update(self, p_xy,
+            c=1.0, origin=None):
+        # 1. clear
+        map_xy = self.query(origin)
+        p_rh   = to_polar(p_xy,   origin) #N,2
+        map_rh = to_polar(map_xy, origin) #N,2
+
+        neigh = NearestNeighbors(n_neighbors=1)
+        neigh.fit(p_rh[:,1:])
+        distances, indices = neigh.kneighbors(map_rh[:,1:],
+                return_distance=True)
+
+        rmask = p_rh[indices,0] > map_rh[:,0]
+        hmask = (distances < np.deg2rad(1.0))
+        mask = np.logical_and(rmask, hmask)
+
+        self.map_[self.xy2ij(map_xy[mask])] = 0.0
+
+        # 2. add
+        #for i, (r,h) in enumerate(map_rh):
+        #    if r > 
+
+
     def query(self, origin,
             radius=5.0, thresh=3.0):
         pass

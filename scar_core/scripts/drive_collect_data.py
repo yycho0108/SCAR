@@ -61,16 +61,16 @@ class dataCollector:
         # map params
         self.map_w = 5.0 #5x5 physical map
         self.map_h = 5.0
-        self.map_ = SparseMap(res = 0.08)
+        self.map_ = SparseMap(res = 0.05)
         #self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
 
         # raycast params
         self.dist_res = .01
-        self.ang_res  = np.deg2rad(2.0)
+        self.ang_res  = np.deg2rad(1.0)
 
         # query params
         self.sensor_radius = 5.0
-        self.seen_thresh = 2
+        self.seen_thresh = 3
 
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
@@ -288,8 +288,9 @@ class dataCollector:
         #To prevent image overflow 
         image_enabled = False
 
+        rate = rospy.Rate(100)
+
         while not rospy.is_shutdown():
-            count += 1
             #Make the neato move in circle of desired radius
             #r = .5
             #linX = 0.1
@@ -300,6 +301,8 @@ class dataCollector:
 
             points = self.points
             if (not len(points)==0) and (not len(self.old_points)==0):
+                self.points = []
+                count += 1
 
                 #Break if no image data
                 if image_enabled and np.size(self.img) == 0:
@@ -326,17 +329,17 @@ class dataCollector:
                         # valid_map_points = np.asarray(map_points)
                         #print(valid_map_points)
                         if len(valid_map_points) >= 20:
-                            trans, diff, idx, num_iter = self.icp.icp(
+                            trans, diff, idx, num_iter, inl = self.icp.icp(
                                     np.asarray(points),
                                     valid_map_points)
-                            offset_euclidean = np.linalg.norm(trans[:2,2])
-                            if offset_euclidean > 1.0:
-                                print('trans', trans)
+                            #offset_euclidean = np.linalg.norm(trans[:2,2])
+                            if (inl < 0.7):# or (offset_euclidean > 1.0):
+                                # inlier ratio is too small!
+                                #print('trans', trans)
+                                #print('{} / {} / {}'.format(diff, idx, num_iter) )
+                                trans = None
                         else:
                             trans = None
-
-
-
                     except Exception as e:
                         print 'e', e
                         print map_points
@@ -354,7 +357,9 @@ class dataCollector:
                 if (trans is not None) and (count >= 5):
                     print count
                     self.update_current_map_to_odom_offset_estimate(trans)
-                    self.map_.update(applyTransformToPoints(trans, points))
+                    self.map_.update(applyTransformToPoints(trans, points),
+                            origin=[self.x, self.y]
+                            )
                     # self.map_update(points)
 
                     # send correction to ROS TF Stream
@@ -367,7 +372,7 @@ class dataCollector:
                             'map')
                 else:
                     # print('what should happen')
-                    self.map_.update(points)
+                    self.map_.update(points, origin=[self.x, self.y])
 
                 self.path = np.concatenate([self.path, [[self.x, self.y, self.theta]] ], axis=0)
 
@@ -384,6 +389,7 @@ class dataCollector:
                     fileNum = self.data_path+"img" +str(count) +".png"
                     cv2.imwrite(fileNum,self.img)
                 self.ranges=[]
+            rate.sleep()
 
 
 if __name__ == "__main__":
