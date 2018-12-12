@@ -61,7 +61,7 @@ class dataCollector:
         # map params
         self.map_w = 5.0 #5x5 physical map
         self.map_h = 5.0
-        self.map_ = SparseMap(res = 0.05)
+        self.map_ = SparseMap(res = 0.08)
         #self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
 
         # raycast params
@@ -324,7 +324,7 @@ class dataCollector:
                     try:
                         valid_map_points = self.raycast(map_points)
                         # valid_map_points = np.asarray(map_points)
-                        print(valid_map_points)
+                        #print(valid_map_points)
                         if len(valid_map_points) >= 20:
                             trans, diff, idx, num_iter = self.icp.icp(
                                     np.asarray(points),
@@ -374,9 +374,9 @@ class dataCollector:
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
                     pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
-                    pd.visualize(points[:,0], points[:,1], clear=False, draw=True, label='scan')
+                    pd.visualize(points[:,0], points[:,1], clear=False, draw=False, label='scan')
                     if valid_map_points is not None:
-                        pd.visualize(valid_map_points[:,0], valid_map_points[:,1], clear=False, draw=True, label='raycast')
+                        pd.visualize(valid_map_points[:,0], valid_map_points[:,1], clear=False, draw=False, label='raycast')
                     pd.visualize(self.path[:,0], self.path[:,1], clear=False, draw=True, label='path', style='-')
                     # plt.legend()
 

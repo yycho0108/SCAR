@@ -2,6 +2,35 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import cv2
 
+
+def estimate_normals(p, k=6):
+    neigh = NearestNeighbors(n_neighbors=k)
+    neigh.fit(p)
+    distances, indices = neigh.kneighbors(return_distance=True)
+
+    dp = (p[indices] - p[:,None])
+    U, s, V = np.linalg.svd(dp.transpose(0,2,1))
+    nv = U[:, :, -1]
+    return nv / np.linalg.norm(nv)
+
+def test_norm():
+    np.random.seed(3)
+    from matplotlib import pyplot as plt
+    pt_map = np.concatenate([get_line(n=33, s=1.0) for _ in range(3)], axis=0)
+
+    pt_map = np.random.normal(loc=pt_map, scale=0.05)
+    nv = estimate_normals(pt_map)
+    plt.plot(pt_map[:,0], pt_map[:,1], '.', label='map')
+    plt.quiver(
+                pt_map[:,0], pt_map[:,1],
+                nv[:,0], nv[:,1],
+                scale_units='xy',
+                angles='xy'
+                )
+    plt.gca().set_aspect('equal', 'datalim')
+    plt.legend()
+    plt.show()
+
 class ICP():
     def __init__(self):
         pass
@@ -51,44 +80,31 @@ class ICP():
         return T, R, t
 
     @staticmethod
-    def best_fit_transform_ransac(A, B,
-            sample_ratio=0.5,
-            thresh=1.0,
-            max_iter=100,
-            min_in_ratio=0.6
-            ):
-        n = len(A)
-        m_s = int(n * sample_ratio)
-        m_i = int(n * min_in_ratio)
+    def best_fit_transform_point_to_plane(src, dst):
+        # TODO : generalize to N-d cases?
+        # TODO : use neighborhood from above?
+        nvec = estimate_normals(dst, k=10)
 
-        # TODO : check m size
+        # construct according to 
+        # https://gfx.cs.princeton.edu/proj/iccv05_course/iccv05_icp_gr.pdf
 
-        best_err = np.inf
-        best_fit = None
+        A_lhs = np.cross(src, nvec)[:,None]
+        A_rhs = nvec
 
-        for i in range(max_iter):
-            idx = np.random.choice(n, m_s, replace=False)
-            T, R, t = ICP.best_fit_transform(A[idx], B[idx])
+        Amat = np.concatenate([A_lhs, A_rhs], axis=1) # == Nx3
 
-            # compute pointwise error
-            err_pt = (np.dot(A, R.T)  + t) - B
-            err_pt = np.linalg.norm(err_pt, axis=-1)
-            # get inliers + net error
-            msk_pt = (err_pt < thresh)
-            err = err_pt.sum()
-            n_in = np.sum(msk_pt)
+        bvec = - ((src - dst)*(nvec)).sum(axis=-1)
 
-            if (n_in > m_i) and (err < best_err):
-                # satisfy inlier requirement + good error
-                best_err = err
-                best_fit = (T, R, t, msk_pt)
-                break
-        if best_fit is None:
-            return None
+        tvec = np.linalg.pinv(Amat).dot(bvec) # == (dh, dx, dy)
 
-        msk = best_fit[-1]
+        R = Rmat( tvec[0] )
+        t = tvec[1:]
 
-        return T, R, t, msk
+        T = np.eye(3, dtype=np.float32)
+        T[:2, :2] = R
+        T[:2, 2]  = t
+
+        return T, R, t
 
     @staticmethod
     def nearest_neighbor(src, dst):
@@ -150,8 +166,8 @@ class ICP():
             distances, indices = ICP.nearest_neighbor(src[:,:-1], dst[:,:-1])
 
             # compute the transformation between the current source and nearest destination points
-            T,_,_ = ICP.best_fit_transform(src[:,:-1], dst[indices,:-1])
-            # T, _, _, msk = ICP.best_fit_transform_ransac(src[:,:-1], dst[indices,:-1])
+            #T,_,_ = ICP.best_fit_transform(src[:,:-1], dst[indices,:-1])
+            T,_,_ = ICP.best_fit_transform_point_to_plane(src[:,:-1], dst[indices,:-1])
 
             src = np.dot(src,T.T) # right-multiply transform matrix
 
@@ -162,7 +178,8 @@ class ICP():
             prev_error = mean_error
 
         # calculate final transformation
-        T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
+        #T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
+        T,_,_ = ICP.best_fit_transform_point_to_plane(A, src[:,:-1])
 
         # alternative - refine transform
         # (mostly, compute the mask and validate truth)
@@ -196,8 +213,8 @@ def get_line(n, s):
     return pt.dot(Rmat(h).T) + o
 
 def main():
+    np.random.seed(0)
     from matplotlib import pyplot as plt
-    #np.random.seed(1)
     # parameters
     n_size = 100
     n_repeat = 100
@@ -268,3 +285,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    #test_norm()

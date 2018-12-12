@@ -44,8 +44,7 @@ class PointDumper(object):
         if draw:
             self.ax_.legend()
             self.fig_.canvas.draw()
-            
-        plt.pause(0.001)
+            plt.pause(0.001)
         #plt.draw()
         #plt.show()
 
