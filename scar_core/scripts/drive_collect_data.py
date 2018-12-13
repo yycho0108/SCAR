@@ -52,6 +52,25 @@ def convert_to_polar(map_points, origin_x, origin_y):
 
     return rads, angs
 
+def to_polar_h(pts, o):
+    # points w.r.t origin accounting heading
+    # pts' = (pts - o).dot(R(oh)) # inverse rotation
+
+    op = np.reshape(o[:2], (1,2))
+    oh = o[-1]
+
+    pts = (pts - op).dot(R2(oh))
+
+    r = np.linalg.norm(pts, axis=-1)
+    h = np.arctan2(pts[:,1], pts[:,0])
+
+    #pts = (pts - op)
+    #r = np.linalg.norm(pts, axis=-1)
+    #h = np.arctan2(pts[:,1], pts[:,0]) - oh
+    #h = anorm(h)
+
+    return np.stack([r,h], axis=-1)
+
 class ScanGUI(object):
     def __init__(self):
         self.fig_ = plt.figure()
@@ -112,7 +131,7 @@ class dataCollector:
         # query params
         self.sensor_radius = 5.0
         #self.seen_thresh = 2
-        self.seen_thresh = 0.51 # probability! TODO: tune
+        self.seen_thresh = 0.68 # probability! TODO: tune
 
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
@@ -298,7 +317,11 @@ class dataCollector:
         """
 
         # step 1
-        rads, angs = convert_to_polar(map_points, self.x, self.y) # 1st step
+        #rads, angs = convert_to_polar(map_points, self.x, self.y) # 1st step
+
+        rh = to_polar_h(map_points, [self.x, self.y, self.theta])
+        rads, angs = rh[:,0], rh[:,1]
+
         angs = np.round(angs / self.ang_res).astype(np.int32) # * self.ang_res
 
         # step 2
@@ -412,7 +435,7 @@ class dataCollector:
                 # update the map with the transformed points
                 # TODO : explicitly compute correspondences
                 if (trans is not None) and (count >= 5):
-                    print count
+                    #print count
                     self.update_current_map_to_odom_offset_estimate(trans)
                     self.map_.update(applyTransformToPoints(trans, points),
                             origin=[self.x, self.y, self.theta]
