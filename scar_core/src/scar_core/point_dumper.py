@@ -46,6 +46,7 @@ class PointDumper(object):
 
         if draw:
             self.ax_.legend()
+            self.ax_.set_aspect('equal','datalim')
             self.fig_.canvas.draw()
             plt.pause(0.001)
         #plt.draw()
