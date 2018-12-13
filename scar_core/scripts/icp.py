@@ -31,6 +31,13 @@ def test_norm():
     plt.show()
 
 def stable_subsample(p):
+    """
+    Geometrically Stable ICP Subsampling with constraints analysis
+    Gelfand et al. 2003
+    http://www.people.vcu.edu/~dbandyop/pubh8472/Gelfand_SVC.pdf
+    https://graphics.stanford.edu/papers/stabicp/stabicp.pdf
+    """
+    # TODO : implement
     pass
 
 class ICP():
@@ -84,7 +91,7 @@ class ICP():
     @staticmethod
     def best_fit_transform_point_to_plane(src, dst):
         # TODO : generalize to N-d cases?
-        # TODO : use neighborhood from above?
+        # TODO : use neighborhood from prior computations?
         nvec = estimate_normals(dst, k=20)
 
         # construct according to 
@@ -141,6 +148,7 @@ class ICP():
         index-matching correspondences, according to Blais and Levine, '95
         https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=400574
         """
+        # TODO : implement
         pass
 
     @staticmethod
