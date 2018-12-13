@@ -195,7 +195,7 @@ class ProbMap(DenseMap):
         self.beam_i_ = (1.0 / (2*np.pi)) # beam interval
         self.beam_n_ = 361 # number of beams - TODO:hardcoded
         self.beam_w_ = 2.3e-3
-        self.beam_d_ = 1.5e-3#(-1.5e-3)
+        self.beam_d_ = -1.5e-3
         #self.beam_s_ =  beam distance standard deviation:
         # for beam_s, refer to https://www.diva-portal.org/smash/get/diva2:995686/FULLTEXT01.pdf
 
@@ -207,7 +207,7 @@ class ProbMap(DenseMap):
         #-Beam Divergence -1.5 mrad
 
     def rh2bin(self, rh):
-        h = (rh[:, 1]) % (2 * np.pi) # mod in python always returns positive
+        h = (rh[:, 1] + 2*np.pi) % (2 * np.pi) # mod in python always returns positive
         bid = np.round(h / self.beam_i_).astype(np.int32)
         return bid
 
@@ -228,6 +228,12 @@ class ProbMap(DenseMap):
         # store bin-wise range data
         bsr = np.full(self.beam_n_, -np.inf, dtype=np.float32)
         bsr[s_bid] = scan_rh[:,0]
+
+        #for i, r in zip(s_bid, scan_rh[:,0]):
+        #    if not np.isfinite(bsr[i]):
+        #        bsr[i] = r
+        #    else:
+        #        bsr[i] = min(bsr[i], r)
 
         mfree = (map_rh[:,0] < bsr[m_bid]) # cells to clear
         mocc  = np.abs(map_rh[:,0] - bsr[m_bid]) < (self.res_/2.0) # cells to mark

@@ -2,7 +2,6 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import cv2
 
-
 def estimate_normals(p, k=20):
     neigh = NearestNeighbors(n_neighbors=k)
     neigh.fit(p)
@@ -30,6 +29,9 @@ def test_norm():
     plt.gca().set_aspect('equal', 'datalim')
     plt.legend()
     plt.show()
+
+def stable_subsample(p):
+    pass
 
 class ICP():
     def __init__(self):
@@ -93,6 +95,15 @@ class ICP():
 
         Amat = np.concatenate([A_lhs, A_rhs], axis=1) # == Nx3
 
+        # == Experimental : Stability Analysis ==
+        #C = Amat.T.dot(Amat) # 3x3 cov-mat
+        #w,v = np.linalg.eig(C)
+        ##c = w[0] / w[-1] # stability
+        #c = w[-1]
+        ##print('w[-1] : {}'.format(w[-1]))
+        c = None
+        # =======================================
+
         bvec = - ((src - dst)*(nvec)).sum(axis=-1)
 
         tvec = np.linalg.pinv(Amat).dot(bvec) # == (dh, dx, dy)
@@ -104,7 +115,7 @@ class ICP():
         T[:2, :2] = R
         T[:2, 2]  = t
 
-        return T, R, t
+        return T, R, t, c
 
     @staticmethod
     def nearest_neighbor(src, dst):
@@ -123,6 +134,14 @@ class ICP():
         neigh.fit(dst)
         distances, indices = neigh.kneighbors(src, return_distance=True)
         return distances.ravel(), indices.ravel()
+
+    @staticmethod
+    def projected_neighbor(src, dst, origin):
+        """
+        index-matching correspondences, according to Blais and Levine, '95
+        https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=400574
+        """
+        pass
 
     @staticmethod
     def icp(A, B, init_pose=None, max_iterations=20, tolerance=0.001):
@@ -167,7 +186,7 @@ class ICP():
 
             # compute the transformation between the current source and nearest destination points
             #T,_,_ = ICP.best_fit_transform(src[:,:-1], dst[indices,:-1])
-            T,_,_ = ICP.best_fit_transform_point_to_plane(src[:,:-1], dst[indices,:-1])
+            T,_,_,_ = ICP.best_fit_transform_point_to_plane(src[:,:-1], dst[indices,:-1])
 
             src = np.dot(src,T.T) # right-multiply transform matrix
 
@@ -179,7 +198,8 @@ class ICP():
 
         # calculate final transformation
         #T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
-        T,_,_ = ICP.best_fit_transform_point_to_plane(A, src[:,:-1])
+        T,_,_,c = ICP.best_fit_transform_point_to_plane(A, src[:,:-1])
+        #print('stability : {}'.format(c))
 
         # reprojection-error based filter
         # (i.e. without RANSAC)
@@ -207,6 +227,10 @@ class ICP():
         #    print '{}% = {}/{}'.format(float(ms)/msk.size*100, ms, msk.size)
 
         inlier_ratio = float(ms) / msk.size
+        #inlier_ratio *= np.float32( c > 3e-2 ) # account for stability
+        # TODO : is it reasonable to account for stability?
+        # I think c==3e-2 equates to ~10 deg rotation / 0.17m translation
+        # not 100% sure about this.
 
         if T3 is not None:
             #print 'T3'

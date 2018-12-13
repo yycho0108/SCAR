@@ -412,8 +412,10 @@ class dataCollector:
                         c_sparse = (inl < 0.5) # not enough inliers
 
                         if c_jump or c_sparse:
-                            print('rejecting transform due to large jump : {}(inlier : {}%)'.format(
-                                offset_euclidean, 100*inl))
+                            cause = ('jump' if c_jump else 'insufficient constraint/stability')
+                            msg = 'rejecting transform due to {} : d={} p={}%' .format(
+                                    cause, offset_euclidean, 100*inl)
+                            print(msg)
                             trans = None
 
                         #if (inl < 0.4) or (offset_euclidean > 0.5):
