@@ -3,7 +3,7 @@ from sklearn.neighbors import NearestNeighbors
 import cv2
 
 
-def estimate_normals(p, k=6):
+def estimate_normals(p, k=20):
     neigh = NearestNeighbors(n_neighbors=k)
     neigh.fit(p)
     distances, indices = neigh.kneighbors(return_distance=True)
@@ -83,7 +83,7 @@ class ICP():
     def best_fit_transform_point_to_plane(src, dst):
         # TODO : generalize to N-d cases?
         # TODO : use neighborhood from above?
-        nvec = estimate_normals(dst, k=6)
+        nvec = estimate_normals(dst, k=20)
 
         # construct according to 
         # https://gfx.cs.princeton.edu/proj/iccv05_course/iccv05_icp_gr.pdf
@@ -181,31 +181,39 @@ class ICP():
         #T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
         T,_,_ = ICP.best_fit_transform_point_to_plane(A, src[:,:-1])
 
+        # reprojection-error based filter
+        # (i.e. without RANSAC)
+        # TODO : this is probably faster, but does performance degrade?
+        delta = np.linalg.norm(dst[indices] - src, axis=-1)
+        msk   = (delta < 0.2)
+        T3    = None
+
         # alternative - refine transform
         # (mostly, compute the mask and validate truth)
         # opencv version - RANSAC
         # doesn't really do anything
-        T3, msk = cv2.estimateAffine2D(
-                src[None,:,:-1],
-                dst[None,indices,:-1],
-                method=cv2.FM_RANSAC,
-                ransacReprojThreshold=0.1,
-                maxIters=2000,
-                confidence=0.9999,
-                refineIters=100
-                )
+        #T3, msk = cv2.estimateAffine2D(
+        #        src[None,:,:-1],
+        #        dst[None,indices,:-1],
+        #        method=cv2.FM_RANSAC,
+        #        ransacReprojThreshold=0.2, # TODO : expose this param
+        #        maxIters=2000,
+        #        confidence=0.9999,
+        #        refineIters=100
+        #        )
 
         ms = msk.sum()
-        if ms != msk.size:
-            print '{}% = {}/{}'.format(float(ms)/msk.size*100, ms, msk.size)
+        #if ms != msk.size:
+        #    print '{}% = {}/{}'.format(float(ms)/msk.size*100, ms, msk.size)
 
         inlier_ratio = float(ms) / msk.size
 
         if T3 is not None:
             #print 'T3'
             #print T[:2] - T3
-            #T3 = np.concatenate([T3, [[0,0,1]] ], axis=0)
-            #T = T.dot(T3)
+            #if inlier_ratio > 0.75:
+            #    T3 = np.concatenate([T3, [[0,0,1]] ], axis=0)
+            #    T = T.dot(T3)
             # TODO : revive? idk
             pass
 
@@ -296,5 +304,5 @@ def main():
     #plt.show()
 
 if __name__ == "__main__":
-    main()
-    #test_norm()
+    #main()
+    test_norm()

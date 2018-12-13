@@ -52,11 +52,51 @@ def convert_to_polar(map_points, origin_x, origin_y):
 
     return rads, angs
 
+class ScanGUI(object):
+    def __init__(self):
+        self.fig_ = plt.figure()
+        self.ax0_ = self.fig_.add_subplot(1,2,1)
+        self.ax1_ = self.fig_.add_subplot(1,2,2)
+    def __call__(self,
+            scan,
+            map,
+            path,
+            origin):
+
+        self.ax0_.cla()
+        self.ax1_.cla()
+
+        self.ax0_.plot(map[:,0], map[:,1], '.', label='map')
+        self.ax0_.plot(scan[:,0], scan[:,1], '+', label='scan')
+        self.ax0_.plot(path[:,0], path[:,1], '--', label='path')
+
+        # self
+        x,y,h = origin
+        c, s = np.cos(h), np.sin(h)
+        self.ax0_.quiver([x],[y],[c],[s],
+                scale_units='xy',
+                angles='xy'
+                )
+
+        # sensor radius
+        sen_h = np.linspace(-np.pi, np.pi)
+        sen_c, sen_s = np.cos(sen_h), np.sin(sen_h)
+        sen_x, sen_y = x + 5.0 * sen_c, y + 5.0 * sen_s
+        self.ax0_.plot(sen_x, sen_y, ':', label='range')
+
+
+    def show(self):
+        self.ax0_.legend()
+        self.ax0_.set_aspect('equal', 'datalim')
+        self.fig_.canvas.draw()
+        plt.pause(0.001)
+
 class dataCollector:
 
     def __init__(self):
         # debug
         self.debugOn = False
+        self.gui_ = ScanGUI()
 
         # map params
         self.map_w = 20.0 #5x5 physical map
@@ -72,7 +112,7 @@ class dataCollector:
         # query params
         self.sensor_radius = 5.0
         #self.seen_thresh = 2
-        self.seen_thresh = 0.6 # probability!
+        self.seen_thresh = 0.51 # probability! TODO: tune
 
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
@@ -280,7 +320,8 @@ class dataCollector:
 
     def run(self):
         #Begin visualization
-        pd = PointDumper(viz=True)
+
+        #pd = PointDumper(viz=True)
         
         #Generate data for debugging
         filename = os.path.join(self.data_path, 'data.csv')
@@ -302,7 +343,7 @@ class dataCollector:
 
             #Don't do anything if there is no data to work with
 
-            points = self.points
+            points = np.asarray(self.points)
             if (not len(points)==0) and (not len(self.old_points)==0):
                 self.points = []
                 count += 1
@@ -322,37 +363,51 @@ class dataCollector:
                 line = str(self.x)+","+str(self.y)+","+str(self.theta)+","+str(self.ranges)[1:-1]+"\n"
                 f.write(line)
 
-                valid_map_points = None
+                valid_map_points = np.empty(shape=(0,2), dtype=np.float32)
 
                 trans = None
-                if np.size(map_points) > 20:
-                    #ICP transform
-                    try:
-                        valid_map_points = self.raycast(map_points)
-                        # valid_map_points = np.asarray(map_points)
-                        #print(valid_map_points)
-                        if len(valid_map_points) >= 20:
-                            trans, diff, idx, num_iter, inl = self.icp.icp(
-                                    np.asarray(points),
-                                    valid_map_points)
-                            offset_euclidean = np.linalg.norm(trans[:2,2])
-                            if (inl < 0.4) or (offset_euclidean > 0.5):
-                                # NOTE : "offset_euclidean" enabled essentially disables loop closure
-                                # in favor of consistent local mapping performance.
 
-                                # inlier ratio is too small!
-                                print('rejecting transform due to large jump', offset_euclidean)
-                                #print('{} / {} / {}'.format(diff, idx, num_iter) )
-                                trans = None
-                        else:
+                #ICP transform
+                try:
+                    valid_map_points = self.raycast(map_points)
+
+                    c_map_cnt  = len(valid_map_points) >= 20
+                    c_scan_cnt = len(points) >= 20
+
+                    # valid_map_points = np.asarray(map_points)
+                    #print(valid_map_points)
+                    if c_map_cnt and c_scan_cnt:
+                        trans, diff, idx, num_iter, inl = self.icp.icp(
+                                points,
+                                valid_map_points)
+
+                        offset_euclidean = np.linalg.norm(trans[:2,2])
+                        offset_h = trans
+
+                        c_jump = ((offset_euclidean > 0.25) and (inl < 0.75)) # unsupported jump
+                        c_jump = c_jump or offset_euclidean > 1.0 # "impossible" jump
+                        c_sparse = (inl < 0.5) # not enough inliers
+
+                        if c_jump or c_sparse:
+                            print('rejecting transform due to large jump : {}(inlier : {}%)'.format(
+                                offset_euclidean, 100*inl))
                             trans = None
-                    except Exception as e:
-                        print 'e', e
-                        print map_points
-                        print map_points.shape
-                        raise e
-                    # update the offset - but only if more than 3 scans have been registered so far
-                    # (prevent premature transform computation)
+
+                        #if (inl < 0.4) or (offset_euclidean > 0.5):
+                        #    # NOTE : "offset_euclidean" enabled essentially disables loop closure
+                        #    # in favor of consistent local mapping performance.
+
+                        #    # inlier ratio is too small!
+                        #    #print('{} / {} / {}'.format(diff, idx, num_iter) )
+                    else:
+                        trans = None
+                except Exception as e:
+                    print 'e', e
+                    print map_points
+                    print map_points.shape
+                    raise e
+                # update the offset - but only if more than 3 scans have been registered so far
+                # (prevent premature transform computation)
 
                 # update the map with the transformed points
                 # TODO : explicitly compute correspondences
@@ -380,13 +435,19 @@ class dataCollector:
 
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
-                    pd.ax2_.cla()
-                    self.map_.show(ax=pd.ax2_)
-                    pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
-                    pd.visualize(points[:,0], points[:,1], clear=False, draw=False, label='scan')
-                    if valid_map_points is not None:
-                        pd.visualize(valid_map_points[:,0], valid_map_points[:,1], clear=False, draw=False, label='raycast')
-                    pd.visualize(self.path[:,0], self.path[:,1], clear=False, draw=True, label='path', style='-')
+                    self.gui_(points, valid_map_points, self.path,
+                            origin=[self.x,self.y,self.theta])
+                    self.map_.show(ax=self.gui_.ax1_)
+                    self.gui_.show()
+
+                    #pd.ax2_.cla()
+                    #self.map_.show(ax=pd.ax2_)
+                    #pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
+                    #pd.visualize(points[:,0], points[:,1], clear=False, draw=False, label='scan')
+                    #if valid_map_points is not None:
+                    #    pd.visualize(valid_map_points[:,0], valid_map_points[:,1], clear=False, draw=False, label='raycast')
+                    #pd.visualize(self.path[:,0], self.path[:,1], clear=False, draw=True, label='path', style='-')
+
                     # plt.legend()
 
                 if image_enabled:

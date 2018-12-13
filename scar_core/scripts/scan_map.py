@@ -88,7 +88,7 @@ class DenseMap(object):
         map_ij = np.stack(np.where(self.map_ >= thresh), axis=-1)
         if map_ij.size <= 0:
             # No points should be visible within the map
-            return []
+            return np.empty(shape=(0,2), dtype=np.float32)
         map_xy = self.ij2xy(map_ij)
         dist = np.linalg.norm(map_xy - np.reshape(origin[:2], [1,2]), axis=-1)
         #print np.sum( dist < radius ), ' ?' 
