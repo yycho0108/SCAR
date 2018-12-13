@@ -31,51 +31,54 @@ from scar_core.point_dumper import PointDumper
 from scan_map import DenseMap, SparseMap, ProbMap
 import tf
 
+
 def applyTransformToPoints(T, points):
-    # points = Nx2
-    # T = [RT
-    #      01]
+    print(points)
+    """
+    Apply a homogenous transformation on a list of points
+
+    T - 2D homogenous transformation matrix, output of ICP
+    points - list of points [[x,y]]
+
+    """
     return np.dot(points, T[:2,:2].T) + T[:2,2]
 
+
 def R2(x):
+    """
+    Create a rotation matrix
+
+    x - angle of rotation (radians)
+    """
     c = np.cos(x)
     s = np.sin(x)
     return np.reshape([c,-s,s,c], (2,2))
 
-def convert_to_polar(map_points, origin_x, origin_y):
-    # TODO : maybe should rotate everything w.r.t. robot
 
-    map_points = map_points - [[origin_x, origin_y]]
-    
-    rads = np.linalg.norm(map_points, axis=-1)
-    angs = np.arctan2(map_points[:,1], map_points[:,0])
+def convert_to_polar(pts, origin):
+    """
+    Convert current map to polar coordinates, with the robot at the origin
+    """
 
-    return rads, angs
-
-def to_polar_h(pts, o):
-    # points w.r.t origin accounting heading
-    # pts' = (pts - o).dot(R(oh)) # inverse rotation
-
-    op = np.reshape(o[:2], (1,2))
-    oh = o[-1]
+    op = np.reshape(origin[:2], (1,2))
+    oh = origin[-1]
 
     pts = (pts - op).dot(R2(oh))
 
     r = np.linalg.norm(pts, axis=-1)
     h = np.arctan2(pts[:,1], pts[:,0])
 
-    #pts = (pts - op)
-    #r = np.linalg.norm(pts, axis=-1)
-    #h = np.arctan2(pts[:,1], pts[:,0]) - oh
-    #h = anorm(h)
-
     return np.stack([r,h], axis=-1)
 
+
 class ScanGUI(object):
+
     def __init__(self):
         self.fig_ = plt.figure()
         self.ax0_ = self.fig_.add_subplot(1,2,1)
         self.ax1_ = self.fig_.add_subplot(1,2,2)
+
+
     def __call__(self,
             scan,
             map,
@@ -110,11 +113,11 @@ class ScanGUI(object):
         self.fig_.canvas.draw()
         plt.pause(0.001)
 
+
 class dataCollector:
 
     def __init__(self):
-        # debug
-        self.debugOn = False
+        
         self.gui_ = ScanGUI()
 
         # map params
@@ -175,11 +178,13 @@ class dataCollector:
         #rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
 
+
     def convert_points(self, points):
-        # pt = Nx2
-        # points in odom frame -> map frame
-        # TODO : maybe easier if braodcasting map frame to ROS Tf
-        # currently handled internally.
+        """
+        Apply offset from previous rounds to current scan
+
+        points - the current set of points from the LIDAR scan
+        """
 
         T_o2m = np.eye(3)
         T_o2m[:2,:2] = R2(self.map_to_odom[-1])
@@ -187,18 +192,18 @@ class dataCollector:
         points = applyTransformToPoints(T_o2m, points)
         return points
 
+
     def publishVelocity(self, linX, angZ):
         """
         Publishes velocities to make the robot move
 
-        linX is a floating point betwmapToRealeen 0 and 1 to control the robot's x linear velocity
-        angZ is a floating point between 0 and 1 to control the robot's z angular velocity
+        linX - 0 and 1 to control the robot's x linear velocity (m/s)
+        angZ - 0 and 1 to control the robot's z angular velocity (rad/s)
         """
-        if self.debugOn: print("publishing")
-
         self.linVector.x = linX
         self.angVector.z = angZ
         self.pub.publish(Twist(linear=self.linVector, angular=self.angVector))
+
 
     def checkLaser(self, scan):
         """
@@ -207,11 +212,10 @@ class dataCollector:
         Pulls laser scan data
 
         Scan: rosmsg with LIDAR Scan data
-
-        TOOD set interoior angle where we know the object will be to reduce scans
         """
         self.old_ranges = self.ranges
         self.ranges = scan.ranges
+
 
     def queryPoints(self):
         """
@@ -225,23 +229,24 @@ class dataCollector:
                 )
         return points
 
+
     def checkPoints(self, msg):
         """
         Time matched LIDAR. Produces much better scans, however not all LIDAR
         is collected
-
-        set interior angle where we know the object will be to reduce scans
         """
+
         self.old_points = self.points
         points = [ [p.x, p.y] for p in msg.points]
+
         # convert incoming points to map frame
         self.points = self.convert_points(points)
-        #T_o2m = np.eye(3)
-        #T_o2m[:2,:2] = R2(self.map_to_odom[-1])
-        #T_o2m[:2,2]  = self.map_to_odom[:2]
-        #self.points = applyTransformToPoints(T_o2m, points)
+        
 
     def setTFLocation(self):
+        """
+        Update the robot's estimated position based on offset
+        """
         try:
             txn, qxn = self.tfl_.lookupTransform('odom', 'base_link', rospy.Time(0))
         except Exception as e:
@@ -251,7 +256,6 @@ class dataCollector:
         # odom frame
         x, y = txn[0], txn[1]
         h    = tf.transformations.euler_from_quaternion(qxn)[-1]
-
         x, y = self.convert_points([[x, y]])[0]
         h    = h + self.map_to_odom[-1]
 
@@ -279,17 +283,17 @@ class dataCollector:
         self.x, self.y = self.convert_points([[pose.position.x, pose.position.y]])[0]
         self.theta = angles[2] + self.map_to_odom[-1]
 
+
     def setImage(self, img):
         """
         Pull image data from camera
 
         img: rosmsg containing image grabbed from camera
         """
-
         img = self.bridge.imgmsg_to_cv2(img, desired_encoding="bgr8")
-        #img = PImage.open(img)
         img = cv2.resize(img, (160, 120), interpolation=cv2.INTER_AREA)
         self.img = img
+
 
     def update_current_map_to_odom_offset_estimate(self, t):
         """
@@ -297,7 +301,8 @@ class dataCollector:
 
         t = homogenuous transformation matrix output of ICP
         """
-        dx0, dy0, dh0 = self.map_to_odom # what it used to be
+        # what it used to be
+        dx0, dy0, dh0 = self.map_to_odom
 
         # current error
         ddx, ddy = t[:2,2]
@@ -308,23 +313,18 @@ class dataCollector:
         dh1 = (dh0 + ddh)
         self.map_to_odom = np.asarray([dx1,dy1,dh1])
 
+
     def raycast(self, map_points):
         """
-        1. Get list of map points + convert to polar coordinates centered around the robot
-        2. Put the points into bins based on specified angular resolution
-        3. Go through the points and find the coordinates of the minimum radius
-        4. Return the list of points
+        Perform raycasting on current map to decide what points to use in ICP
         """
 
-        # step 1
-        #rads, angs = convert_to_polar(map_points, self.x, self.y) # 1st step
-
-        rh = to_polar_h(map_points, [self.x, self.y, self.theta])
+        # Step 1 - Get list of map points + convert to polar coordinates centered around the robot
+        rh = convert_to_polar(map_points, [self.x, self.y, self.theta])
         rads, angs = rh[:,0], rh[:,1]
+        angs = np.round(angs / self.ang_res).astype(np.int32)
 
-        angs = np.round(angs / self.ang_res).astype(np.int32) # * self.ang_res
-
-        # step 2
+        # Step 2 - Put the points into bins based on specified angular resolution
         rbins = defaultdict(lambda:[])
         pbins = defaultdict(lambda:[])
 
@@ -332,7 +332,7 @@ class dataCollector:
             rbins[a].append(r)
             pbins[a].append(p)
 
-        # step 3
+        # Step 3 - Go through the points and find the coordinates of the minimum radius
         points = []
         for a in angs:
             idx = np.argmin(rbins[a])
@@ -342,9 +342,6 @@ class dataCollector:
         return points
 
     def run(self):
-        #Begin visualization
-
-        #pd = PointDumper(viz=True)
         
         #Generate data for debugging
         filename = os.path.join(self.data_path, 'data.csv')
@@ -358,24 +355,17 @@ class dataCollector:
         rate = rospy.Rate(100)
 
         while not rospy.is_shutdown():
-            #Make the neato move in circle of desired radius
-            #r = .5
-            #linX = 0.1
-            #angZ = linX/r
-            #self.publishVelocity(linX, angZs)
+            points = np.asarray(self.points)
 
             #Don't do anything if there is no data to work with
-
-            points = np.asarray(self.points)
             if (not len(points)==0) and (not len(self.old_points)==0):
                 self.points = []
                 count += 1
 
-                #Break if no image data
                 if image_enabled and np.size(self.img) == 0:
                     continue
 
-                # query the points in the map and perform ICP on them
+                #Update robot position
                 self.setTFLocation()
                 map_points = self.queryPoints()
 
@@ -387,23 +377,22 @@ class dataCollector:
                 f.write(line)
 
                 valid_map_points = np.empty(shape=(0,2), dtype=np.float32)
-
                 trans = None
 
-                #ICP transform
                 try:
                     valid_map_points = self.raycast(map_points)
 
+                    #Ensure enough data to work with
                     c_map_cnt  = len(valid_map_points) >= 20
                     c_scan_cnt = len(points) >= 20
 
-                    # valid_map_points = np.asarray(map_points)
-                    #print(valid_map_points)
+                    #ICP
                     if c_map_cnt and c_scan_cnt:
                         trans, diff, idx, num_iter, inl = self.icp.icp(
                                 points,
                                 valid_map_points)
 
+                        #Ensure no massive jumps caused by incorrect transform
                         offset_euclidean = np.linalg.norm(trans[:2,2])
                         offset_h = trans
 
@@ -418,12 +407,6 @@ class dataCollector:
                             print(msg)
                             trans = None
 
-                        #if (inl < 0.4) or (offset_euclidean > 0.5):
-                        #    # NOTE : "offset_euclidean" enabled essentially disables loop closure
-                        #    # in favor of consistent local mapping performance.
-
-                        #    # inlier ratio is too small!
-                        #    #print('{} / {} / {}'.format(diff, idx, num_iter) )
                     else:
                         trans = None
                 except Exception as e:
@@ -431,20 +414,18 @@ class dataCollector:
                     print map_points
                     print map_points.shape
                     raise e
-                # update the offset - but only if more than 3 scans have been registered so far
+                #Update the offset - but only if more than 5 scans have been registered so far
                 # (prevent premature transform computation)
 
                 # update the map with the transformed points
-                # TODO : explicitly compute correspondences
                 if (trans is not None) and (count >= 5):
-                    #print count
                     self.update_current_map_to_odom_offset_estimate(trans)
                     self.map_.update(applyTransformToPoints(trans, points),
                             origin=[self.x, self.y, self.theta]
                             )
-                    # self.map_update(points)
+                   
 
-                    # send correction to ROS TF Stream
+                    #Send correction to ROS TF Stream
                     m2ox, m2oy, m2oh = self.map_to_odom
                     self.tfb_.sendTransform(
                             [m2ox, m2oy, 0],
@@ -453,28 +434,19 @@ class dataCollector:
                             'odom',
                             'map')
                 else:
-                    # print('what should happen')
                     self.map_.update(points, origin=[self.x, self.y, self.theta])
 
-                self.path = np.concatenate([self.path, [[self.x, self.y, self.theta]] ], axis=0)
+                
 
-                # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
+               #Vizualize
                 if len(map_points) > 0:
                     self.gui_(points, valid_map_points, self.path,
                             origin=[self.x,self.y,self.theta])
                     self.map_.show(ax=self.gui_.ax1_)
                     self.gui_.show()
 
-                    #pd.ax2_.cla()
-                    #self.map_.show(ax=pd.ax2_)
-                    #pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
-                    #pd.visualize(points[:,0], points[:,1], clear=False, draw=False, label='scan')
-                    #if valid_map_points is not None:
-                    #    pd.visualize(valid_map_points[:,0], valid_map_points[:,1], clear=False, draw=False, label='raycast')
-                    #pd.visualize(self.path[:,0], self.path[:,1], clear=False, draw=True, label='path', style='-')
-
-                    # plt.legend()
-
+                #Save Images
+                self.path = np.concatenate([self.path, [[self.x, self.y, self.theta]] ], axis=0)
                 if image_enabled:
                     fileNum = self.data_path+"img" +str(count) +".png"
                     cv2.imwrite(fileNum,self.img)
