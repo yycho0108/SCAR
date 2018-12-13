@@ -83,7 +83,7 @@ class ICP():
     def best_fit_transform_point_to_plane(src, dst):
         # TODO : generalize to N-d cases?
         # TODO : use neighborhood from above?
-        nvec = estimate_normals(dst, k=10)
+        nvec = estimate_normals(dst, k=6)
 
         # construct according to 
         # https://gfx.cs.princeton.edu/proj/iccv05_course/iccv05_icp_gr.pdf
@@ -166,8 +166,8 @@ class ICP():
             distances, indices = ICP.nearest_neighbor(src[:,:-1], dst[:,:-1])
 
             # compute the transformation between the current source and nearest destination points
-            T,_,_ = ICP.best_fit_transform(src[:,:-1], dst[indices,:-1])
-            #T,_,_ = ICP.best_fit_transform_point_to_plane(src[:,:-1], dst[indices,:-1])
+            #T,_,_ = ICP.best_fit_transform(src[:,:-1], dst[indices,:-1])
+            T,_,_ = ICP.best_fit_transform_point_to_plane(src[:,:-1], dst[indices,:-1])
 
             src = np.dot(src,T.T) # right-multiply transform matrix
 
@@ -178,8 +178,8 @@ class ICP():
             prev_error = mean_error
 
         # calculate final transformation
-        T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
-        #T,_,_ = ICP.best_fit_transform_point_to_plane(A, src[:,:-1])
+        #T,_,_ = ICP.best_fit_transform(A, src[:,:-1])
+        T,_,_ = ICP.best_fit_transform_point_to_plane(A, src[:,:-1])
 
         # alternative - refine transform
         # (mostly, compute the mask and validate truth)
@@ -202,9 +202,12 @@ class ICP():
         inlier_ratio = float(ms) / msk.size
 
         if T3 is not None:
+            #print 'T3'
             #print T[:2] - T3
-            T3 = np.concatenate([T3, [[0,0,1]] ], axis=0)
-            T = T.dot(T3)
+            #T3 = np.concatenate([T3, [[0,0,1]] ], axis=0)
+            #T = T.dot(T3)
+            # TODO : revive? idk
+            pass
 
         return T, distances, indices, i, inlier_ratio
 
@@ -259,7 +262,7 @@ def main():
 
             # apply noise
             pt_scan = np.random.normal(loc=pt_scan, scale=s_noise)
-            T, distances, indices, iterations = ICP.icp(pt_scan, pt_map,
+            T, distances, indices, iterations, inl = ICP.icp(pt_scan, pt_map,
                     tolerance=0.000001)
 
             pt_scan_r = pt_scan.dot(T[:2,:2].T) + T[:2,2].reshape(1,2)

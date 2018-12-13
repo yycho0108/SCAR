@@ -16,9 +16,10 @@ points1 =np.asarray(points1)
 points2 =np.asarray(points2)
 
 print(points2)
-t, d, i, n = myicp.icp(points1, points2)
+t, d, i, n, _ = myicp.icp(points1, points2)
 
 p1t = points1.dot(t[:2,:2].T) + t[:2,2]
+print 'p1t', p1t
 
 print(t)
 
