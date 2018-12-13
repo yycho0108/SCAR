@@ -10,6 +10,12 @@ def to_polar(pts, o):
     h = np.arctan2(dxy[:,1], dxy[:,0])
     return np.stack([r,h], axis=-1)
 
+#def to_polar(pts, o):
+#    dxy = pts - np.reshape(o, [1,2])
+#    r = np.linalg.norm(dxy, axis=-1)
+#    h = np.arctan2(dxy[:,1], dxy[:,0])
+#    return np.stack([r,h], axis=-1)
+
 class DenseMap(object):
     """ Map Occ-Grid Representation """
     def __init__(self, w=10.0, h=10.0, res=0.02):
@@ -26,8 +32,8 @@ class DenseMap(object):
         # in the map, x is pointing up and y is pointing left
         # i.e. +x = -v, +y = -u
         x, y = xy.T
-        i = np.int32(np.round((-x / self.res_)+(self.n_ /2)))
-        j = np.int32(np.round((-y / self.res_)+(self.m_ /2)))
+        i = np.int32(np.round((-y / self.res_)+(self.n_ /2)))
+        j = np.int32(np.round(( x / self.res_)+(self.m_ /2)))
         return np.stack([i,j], axis=-1)
 
     def ij2xy(self, ij):
@@ -35,8 +41,8 @@ class DenseMap(object):
         # in the map, x is pointing up and y is pointing left
         # i.e. +x = -v, +y = -u
         i,j = np.transpose(ij)
-        x = -(i-(self.n_/2))*self.res_
-        y = -(j-(self.m_/2))*self.res_
+        y = -(i-(self.n_/2))*self.res_
+        x = (j-(self.m_/2))*self.res_
         return np.stack([x,y], axis=-1)
 
     def update(self, p_xy, c=1.0, origin=None):
@@ -69,8 +75,11 @@ class DenseMap(object):
 
     def show(self, ax=None):
         # dilate just for visualization
-        map_norm = cv2.dilate(self.map_, np.ones((3,3), dtype=np.uint8))
-        map_norm = np.float32(map_norm > 0)
+
+        map_norm = np.float32(self.map_ > 0)
+        #map_norm = cv2.dilate(self.map_, np.ones((3,3), dtype=np.uint8))
+        #map_norm = np.float32(map_norm > 0)
+
         # show
         if ax is None:
             ax = plt.gca()
@@ -146,13 +155,50 @@ def gkern(kernlen=21, nsig=3):
     return kernel
 
 class ProbMap(DenseMap):
-    def __init__(self, res=0.02):
-        self.res_ = res
-        pass
+    def __init__(self, w=10.0, h=10.0, res=0.02):
+        super(Prob, self).__init__(w,h,res)
+
+        # log-odds parametrization
+        self.l0_ = 0.0
+        self.locc_ = 0.4
+        self.lfree_ = -0.4
+
+        self.beam_i_ = (1.0 / (2*np.pi)) # beam interval
+        self.beam_w_ = 2.3e-3
+
+        # From Lidar Specs:
+        #-Pulse Rep Frequency 1.8 kHz
+        #-Pulse Duration 200 usec
+        #-Peak Power 2.1 mW
+        #-Beam Diameter 2.3 mm
+        #-Beam Divergence -1.5 mrad
+
+    def inverse_sensor_model(self,
+            origin, scans,
+            map_occ, map_loc,
+            beam_intbeam_div
+            ):
+        map_rh = to_polar_h(origin, map_loc)
+
+        # beam character mask
+        bmask = (map_rh + np.pi) % (1.0 / (2*np.pi)) - np.pi
+        bmask = np.abs(bmask) < self.beam_w_
+        # TODO : implement
+        #map_loc - 
 
     def update(self, p_xy,
             c=1.0, origin=None):
         # 1. clear
+
+        # TODO : avoid hard-coding 5.0 here
+        # pass in more parameters at __init__()
+        ox, oy, oh = origin
+        dmask = np.linalg.norm(self.grid_ - [[[ox, oy]]], axis=-1) < 5.0
+        self.map_[dmask] += self.inverse_sensor_model(origin, p_xy,
+                self.map_[dmask],
+                self.grid_[dmask]
+                )
+
         map_xy = self.query(origin)
         p_rh   = to_polar(p_xy,   origin) #N,2
         map_rh = to_polar(map_xy, origin) #N,2
@@ -173,8 +219,8 @@ class ProbMap(DenseMap):
         #    if r > 
 
 
-    def query(self, origin,
-            radius=5.0, thresh=3.0):
+    def query(self, origin, radius=5.0, thresh=0.75):
+        # >75% chance considered occupied
         pass
 
 def main():
@@ -188,16 +234,16 @@ def main():
     print map1.ij2xy(map1.xy2ij( points ))
     print '=='
 
-    map1.update(points)
-    map1.update(points)
-    map1.update(points)
+    map1.update(points, origin=(0,0))
+    map1.update(points, origin=(0,0))
+    map1.update(points, origin=(0,0))
     print 'q1', map1.query(origin=(0,0))
     map1.show(ax=ax0)
 
     map2 = SparseMap()
-    map2.update(points)
-    map2.update(points)
-    map2.update(points)
+    map2.update(points, origin=(0,0))
+    map2.update(points, origin=(0,0))
+    map2.update(points, origin=(0,0))
     print 'q2', map2.query(origin=(0,0))
     map2.show(ax=ax1)
 

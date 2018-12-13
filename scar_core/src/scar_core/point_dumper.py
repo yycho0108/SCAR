@@ -12,7 +12,10 @@ class PointDumper(object):
     def __init__(self, viz=False):
         self.viz_ = viz
         if self.viz_:
-            self.fig_, self.ax_ = plt.subplots(1,1)
+            #self.fig_, self.ax_ = plt.subplots(1,1)
+            self.fig_ = plt.figure()
+            self.ax_ = self.fig_.add_subplot(1,2,1)
+            self.ax2_ = self.fig_.add_subplot(1,2,2)
 
     def proc_frame(self, x,y,h,r):
         # known angular spacings

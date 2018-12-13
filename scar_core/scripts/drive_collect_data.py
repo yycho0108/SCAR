@@ -59,10 +59,10 @@ class dataCollector:
         self.debugOn = False
 
         # map params
-        self.map_w = 5.0 #5x5 physical map
-        self.map_h = 5.0
-        self.map_ = SparseMap(res = 0.05)
-        #self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
+        self.map_w = 20.0 #5x5 physical map
+        self.map_h = 20.0
+        #self.map_ = SparseMap(res = 0.05)
+        self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
 
         # raycast params
         self.dist_res = .01
@@ -70,7 +70,7 @@ class dataCollector:
 
         # query params
         self.sensor_radius = 5.0
-        self.seen_thresh = 3
+        self.seen_thresh = 2
 
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
@@ -111,7 +111,7 @@ class dataCollector:
         
         rospy.Subscriber("/stable_scan", LaserScan, self.checkLaser)
         rospy.Subscriber("/projected_stable_scan", PointCloud, self.checkPoints)
-        rospy.Subscriber("/odom", Odometry, self.setLocation)
+        #rospy.Subscriber("/odom", Odometry, self.setLocation)
         rospy.Subscriber('/camera/image_raw', Image, self.setImage)
 
     def convert_points(self, points):
@@ -182,7 +182,7 @@ class dataCollector:
 
     def setTFLocation(self):
         try:
-            txn, qxn = self.tfl_.lookupTransform('base_link', 'odom', rospy.Time(0))
+            txn, qxn = self.tfl_.lookupTransform('odom', 'base_link', rospy.Time(0))
         except Exception as e:
             rospy.loginfo_throttle(1.0, 'Failed TF Transform : {}'.format(e))
             return
@@ -309,7 +309,7 @@ class dataCollector:
                     continue
 
                 # query the points in the map and perform ICP on them
-                #self.setTFLocation()
+                self.setTFLocation()
                 map_points = self.queryPoints()
 
                 #Online visualization
@@ -332,10 +332,10 @@ class dataCollector:
                             trans, diff, idx, num_iter, inl = self.icp.icp(
                                     np.asarray(points),
                                     valid_map_points)
-                            #offset_euclidean = np.linalg.norm(trans[:2,2])
-                            if (inl < 0.7):# or (offset_euclidean > 1.0):
+                            offset_euclidean = np.linalg.norm(trans[:2,2])
+                            if (inl < 0.7) or (offset_euclidean > 0.5):
                                 # inlier ratio is too small!
-                                #print('trans', trans)
+                                print('rejecting transform due to large jump', offset_euclidean)
                                 #print('{} / {} / {}'.format(diff, idx, num_iter) )
                                 trans = None
                         else:
@@ -345,12 +345,8 @@ class dataCollector:
                         print map_points
                         print map_points.shape
                         raise e
-
-
-                
                     # update the offset - but only if more than 3 scans have been registered so far
                     # (prevent premature transform computation)
-                
 
                 # update the map with the transformed points
                 # TODO : explicitly compute correspondences
@@ -378,6 +374,7 @@ class dataCollector:
 
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
+                    self.map_.show(ax=pd.ax2_)
                     pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
                     pd.visualize(points[:,0], points[:,1], clear=False, draw=False, label='scan')
                     if valid_map_points is not None:
