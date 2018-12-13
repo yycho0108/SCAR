@@ -28,7 +28,7 @@ from collections import defaultdict
 
 from scar_core.point_dumper import PointDumper
 
-from scan_map import DenseMap, SparseMap
+from scan_map import DenseMap, SparseMap, ProbMap
 import tf
 
 def applyTransformToPoints(T, points):
@@ -61,8 +61,9 @@ class dataCollector:
         # map params
         self.map_w = 20.0 #5x5 physical map
         self.map_h = 20.0
-        self.map_ = SparseMap(res = 0.02)
+        # self.map_ = SparseMap(res = 0.02)
         # self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
+        self.map_ = ProbMap(w=self.map_w, h=self.map_h, res=0.1)
 
         # raycast params
         self.dist_res = .01
@@ -70,7 +71,8 @@ class dataCollector:
 
         # query params
         self.sensor_radius = 5.0
-        self.seen_thresh = 2
+        #self.seen_thresh = 2
+        self.seen_thresh = 0.6 # probability!
 
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
@@ -158,7 +160,7 @@ class dataCollector:
         """
         center = (self.x, self.y)
         points = self.map_.query(
-                origin = (self.x, self.y),
+                origin = (self.x, self.y, self.theta),
                 radius = self.sensor_radius,
                 thresh = self.seen_thresh
                 )
@@ -334,7 +336,10 @@ class dataCollector:
                                     np.asarray(points),
                                     valid_map_points)
                             offset_euclidean = np.linalg.norm(trans[:2,2])
-                            if (inl < 0.7) or (offset_euclidean > 0.5):
+                            if (inl < 0.4) or (offset_euclidean > 0.5):
+                                # NOTE : "offset_euclidean" enabled essentially disables loop closure
+                                # in favor of consistent local mapping performance.
+
                                 # inlier ratio is too small!
                                 print('rejecting transform due to large jump', offset_euclidean)
                                 #print('{} / {} / {}'.format(diff, idx, num_iter) )
@@ -355,7 +360,7 @@ class dataCollector:
                     print count
                     self.update_current_map_to_odom_offset_estimate(trans)
                     self.map_.update(applyTransformToPoints(trans, points),
-                            origin=[self.x, self.y]
+                            origin=[self.x, self.y, self.theta]
                             )
                     # self.map_update(points)
 
@@ -369,7 +374,7 @@ class dataCollector:
                             'map')
                 else:
                     # print('what should happen')
-                    self.map_.update(points, origin=[self.x, self.y])
+                    self.map_.update(points, origin=[self.x, self.y, self.theta])
 
                 self.path = np.concatenate([self.path, [[self.x, self.y, self.theta]] ], axis=0)
 
