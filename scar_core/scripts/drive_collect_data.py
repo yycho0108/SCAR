@@ -61,8 +61,8 @@ class dataCollector:
         # map params
         self.map_w = 20.0 #5x5 physical map
         self.map_h = 20.0
-        #self.map_ = SparseMap(res = 0.05)
-        self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
+        self.map_ = SparseMap(res = 0.02)
+        # self.map_ = DenseMap(w=self.map_w, h=self.map_h, res = 0.1)
 
         # raycast params
         self.dist_res = .01
@@ -196,6 +196,7 @@ class dataCollector:
 
         self.x, self.y = (x,y)
         self.theta = h
+
 
     def setLocation(self, odom):
         """
@@ -374,6 +375,7 @@ class dataCollector:
 
                 # pd.proc_frame(self.x, self.y, self.theta, self.ranges)
                 if len(map_points) > 0:
+                    pd.ax2_.cla()
                     self.map_.show(ax=pd.ax2_)
                     pd.visualize(map_points[:,0], map_points[:,1], clear=True, label='map')
                     pd.visualize(points[:,0], points[:,1], clear=False, draw=False, label='scan')
